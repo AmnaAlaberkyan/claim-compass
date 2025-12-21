@@ -101,13 +101,13 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
   };
 
   const logVerificationAction = async (action: string, details: Record<string, any>) => {
-    await supabase.from('audit_logs').insert({
+    await supabase.from('audit_logs').insert([{
       claim_id: claim.id,
       action,
       actor: 'Adjuster',
       actor_type: 'human',
-      details,
-    });
+      details: JSON.parse(JSON.stringify(details)),
+    }]);
     fetchAuditLogs();
   };
 
@@ -337,13 +337,13 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
 
       if (updateError) throw updateError;
 
-      await supabase.from('audit_logs').insert({
+      await supabase.from('audit_logs').insert([{
         claim_id: claim.id,
         action: `claim_${decision}`,
         actor: 'Adjuster',
         actor_type: 'human',
-        details: { decision, verificationState },
-      });
+        details: JSON.parse(JSON.stringify({ decision, verificationState })),
+      }]);
 
       toast.success(`Claim ${decision === 'approve' ? 'approved' : decision === 'escalate' ? 'escalated' : 'marked for review'}`);
       onUpdate();
