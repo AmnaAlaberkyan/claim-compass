@@ -1,8 +1,27 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Detection, Annotations, SeverityLevel } from '@/types/annotations';
-import { X, Eye, EyeOff, RotateCcw, Save, AlertTriangle, SlidersHorizontal } from 'lucide-react';
+import { Detection, Annotations, SeverityLevel, DamageLabel, DamagePart } from '@/types/annotations';
+import { BoxVerification, VerificationStatus, ReasonCode, REASON_CODE_LABELS } from '@/types/verification';
+import { 
+  X, Eye, EyeOff, RotateCcw, Save, AlertTriangle, SlidersHorizontal,
+  Check, Bot, UserCheck, Pencil, Link2
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Slider } from '@/components/ui/slider';
+import { Badge } from '@/components/ui/badge';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+
 interface DamageOverlayProps {
   imageUrl: string;
   annotations: Annotations | null;
@@ -10,6 +29,16 @@ interface DamageOverlayProps {
   onSave?: (annotations: Annotations) => void;
   onReset?: () => void;
   onMarkUncertain?: () => void;
+  // Verification props
+  boxVerifications?: BoxVerification[];
+  onVerifyBox?: (detectionId: string) => void;
+  onRejectBox?: (detectionId: string, reasonCode: ReasonCode, notes?: string) => void;
+  onEditBox?: (detectionId: string, edits: BoxVerification['editedValues'], reasonCode: ReasonCode) => void;
+  onMarkBoxUncertain?: (detectionId: string) => void;
+  onLinkBoxToPart?: (detectionId: string, partIndex: number | null) => void;
+  highlightedBoxId?: string | null;
+  partLabels?: string[];
+  showVerificationControls?: boolean;
 }
 
 const severityColors: Record<SeverityLevel, string> = {
@@ -24,6 +53,16 @@ const severityLabelColors: Record<SeverityLevel, string> = {
   severe: 'bg-destructive/90 text-destructive-foreground',
 };
 
+const verificationBorderColors: Record<VerificationStatus, string> = {
+  proposed: '',
+  verified: 'ring-2 ring-success ring-offset-1',
+  rejected: 'ring-2 ring-destructive ring-offset-1 opacity-40',
+  needs_review: 'ring-2 ring-warning ring-offset-1',
+};
+
+const DAMAGE_LABELS: DamageLabel[] = ['scratch', 'dent', 'crack', 'broken', 'paint_transfer', 'misalignment', 'unknown'];
+const SEVERITY_LEVELS: SeverityLevel[] = ['minor', 'moderate', 'severe'];
+
 export function DamageOverlay({
   imageUrl,
   annotations,
@@ -31,6 +70,15 @@ export function DamageOverlay({
   onSave,
   onReset,
   onMarkUncertain,
+  boxVerifications = [],
+  onVerifyBox,
+  onRejectBox,
+  onEditBox,
+  onMarkBoxUncertain,
+  onLinkBoxToPart,
+  highlightedBoxId,
+  partLabels = [],
+  showVerificationControls = false,
 }: DamageOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -46,9 +94,20 @@ export function DamageOverlay({
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [hasChanges, setHasChanges] = useState(false);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0);
+  const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
+  const [rejectingBoxId, setRejectingBoxId] = useState<string | null>(null);
+  const [linkingBoxId, setLinkingBoxId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<BoxVerification['editedValues']>({});
+  const [rejectForm, setRejectForm] = useState<{ reasonCode: ReasonCode; notes: string }>({
+    reasonCode: 'false_positive',
+    notes: '',
+  });
 
-  // Filter detections based on confidence threshold
   const filteredDetections = localDetections.filter(d => d.confidence >= confidenceThreshold);
+
+  const getBoxVerification = (detectionId: string): BoxVerification | undefined => {
+    return boxVerifications.find(v => v.detectionId === detectionId);
+  };
 
   useEffect(() => {
     if (annotations?.detections) {
@@ -109,7 +168,6 @@ export function DamageOverlay({
   const handleContainerMouseDown = (e: React.MouseEvent) => {
     if (!editable) return;
     
-    // Click on empty space - start drawing new box
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     
@@ -178,10 +236,6 @@ export function DamageOverlay({
       }));
       setHasChanges(true);
     }
-
-    if (isDrawing) {
-      // Visual feedback handled by temporary overlay
-    }
   };
 
   const handleMouseUp = (e: React.MouseEvent) => {
@@ -248,6 +302,23 @@ export function DamageOverlay({
       setHasChanges(false);
     }
     if (onReset) onReset();
+  };
+
+  const handleBoxClick = (e: React.MouseEvent, detection: Detection) => {
+    e.stopPropagation();
+    setSelectedId(detection.id);
+  };
+
+  const handleRejectBoxSubmit = (detectionId: string) => {
+    onRejectBox?.(detectionId, rejectForm.reasonCode, rejectForm.notes || undefined);
+    setRejectingBoxId(null);
+    setRejectForm({ reasonCode: 'false_positive', notes: '' });
+  };
+
+  const handleEditBoxSubmit = (detectionId: string) => {
+    onEditBox?.(detectionId, editForm, 'other');
+    setEditingBoxId(null);
+    setEditForm({});
   };
 
   return (
@@ -341,6 +412,11 @@ export function DamageOverlay({
         {showOverlay && imageDims.width > 0 && filteredDetections.map(detection => {
           const coords = getPixelCoords(detection.box);
           const isSelected = selectedId === detection.id;
+          const isHighlighted = highlightedBoxId === detection.id;
+          const verification = getBoxVerification(detection.id);
+          const status = verification?.status || 'proposed';
+          const isVerified = status === 'verified';
+          const isRejected = status === 'rejected';
           
           return (
             <div
@@ -349,7 +425,9 @@ export function DamageOverlay({
                 "absolute border-2 rounded transition-all",
                 severityColors[detection.severity],
                 isSelected && editable && "ring-2 ring-primary ring-offset-1",
-                editable && "cursor-move"
+                isHighlighted && "ring-2 ring-primary ring-offset-2 animate-pulse",
+                editable && "cursor-move",
+                showVerificationControls && verificationBorderColors[status]
               )}
               style={{
                 left: coords.left,
@@ -357,20 +435,38 @@ export function DamageOverlay({
                 width: coords.width,
                 height: coords.height,
               }}
-              onMouseDown={(e) => handleMouseDown(e, detection)}
+              onMouseDown={(e) => editable ? handleMouseDown(e, detection) : handleBoxClick(e, detection)}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Label pill */}
+              {/* Label pill with verification badge */}
               <div 
                 className={cn(
-                  "absolute -top-6 left-0 px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap",
-                  severityLabelColors[detection.severity]
+                  "absolute -top-6 left-0 flex items-center gap-1"
                 )}
               >
-                {detection.label} · {detection.part} · {detection.confidence.toFixed(2)}
+                <span className={cn(
+                  "px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap",
+                  severityLabelColors[detection.severity]
+                )}>
+                  {verification?.editedValues?.label || detection.label} · {verification?.editedValues?.part || detection.part}
+                </span>
+                {showVerificationControls && (
+                  <Badge 
+                    variant="outline" 
+                    className={cn(
+                      "text-[9px] px-1 py-0 h-4",
+                      status === 'proposed' && "bg-muted/80",
+                      status === 'verified' && "bg-success/20 text-success border-success/30",
+                      status === 'rejected' && "bg-destructive/20 text-destructive border-destructive/30",
+                      status === 'needs_review' && "bg-warning/20 text-warning border-warning/30"
+                    )}
+                  >
+                    {status === 'proposed' ? <Bot className="w-2.5 h-2.5" /> : <UserCheck className="w-2.5 h-2.5" />}
+                  </Badge>
+                )}
               </div>
 
-              {/* Delete button */}
+              {/* Delete button (edit mode) */}
               {editable && isSelected && (
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDelete(detection.id); }}
@@ -378,6 +474,181 @@ export function DamageOverlay({
                 >
                   <X className="w-3 h-3" />
                 </button>
+              )}
+
+              {/* Verification actions (verification mode) */}
+              {showVerificationControls && isSelected && !isVerified && (
+                <div className="absolute -bottom-8 left-0 flex items-center gap-1 bg-card/95 backdrop-blur-sm rounded-md p-1 shadow-lg border border-border">
+                  {/* Verify */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onVerifyBox?.(detection.id); }}
+                    className="p-1 rounded text-success hover:bg-success/10"
+                    title="Verify"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Reject */}
+                  <Popover open={rejectingBoxId === detection.id} onOpenChange={(open) => setRejectingBoxId(open ? detection.id : null)}>
+                    <PopoverTrigger asChild>
+                      <button
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1 rounded text-destructive hover:bg-destructive/10"
+                        title="Reject"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-3" align="start">
+                      <p className="text-sm font-medium mb-2">Reject Detection</p>
+                      <div className="space-y-2">
+                        <Select
+                          value={rejectForm.reasonCode}
+                          onValueChange={(v) => setRejectForm(f => ({ ...f, reasonCode: v as ReasonCode }))}
+                        >
+                          <SelectTrigger className="text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(REASON_CODE_LABELS).map(([code, label]) => (
+                              <SelectItem key={code} value={code} className="text-xs">{label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <button
+                          onClick={() => handleRejectBoxSubmit(detection.id)}
+                          className="w-full btn-destructive text-xs py-1.5"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Edit */}
+                  <Popover open={editingBoxId === detection.id} onOpenChange={(open) => {
+                    setEditingBoxId(open ? detection.id : null);
+                    if (open) {
+                      setEditForm({
+                        label: detection.label,
+                        part: detection.part,
+                        severity: detection.severity,
+                        confidence: detection.confidence,
+                      });
+                    }
+                  }}>
+                    <PopoverTrigger asChild>
+                      <button
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1 rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title="Edit"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-56 p-3" align="start">
+                      <p className="text-sm font-medium mb-2">Edit Detection</p>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[10px] text-muted-foreground">Label</label>
+                          <Select
+                            value={editForm.label || detection.label}
+                            onValueChange={(v) => setEditForm(f => ({ ...f, label: v }))}
+                          >
+                            <SelectTrigger className="text-xs h-8 mt-0.5">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {DAMAGE_LABELS.map(l => (
+                                <SelectItem key={l} value={l} className="text-xs">{l}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted-foreground">Part</label>
+                          <Input
+                            value={editForm.part || ''}
+                            onChange={(e) => setEditForm(f => ({ ...f, part: e.target.value }))}
+                            className="text-xs h-8 mt-0.5"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted-foreground">Severity</label>
+                          <Select
+                            value={editForm.severity || detection.severity}
+                            onValueChange={(v) => setEditForm(f => ({ ...f, severity: v }))}
+                          >
+                            <SelectTrigger className="text-xs h-8 mt-0.5">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SEVERITY_LEVELS.map(s => (
+                                <SelectItem key={s} value={s} className="text-xs capitalize">{s}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <button
+                          onClick={() => handleEditBoxSubmit(detection.id)}
+                          className="w-full btn-primary text-xs py-1.5"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Mark uncertain */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onMarkBoxUncertain?.(detection.id); }}
+                    className="p-1 rounded text-warning hover:bg-warning/10"
+                    title="Mark Uncertain"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Link to part */}
+                  {partLabels.length > 0 && (
+                    <Popover open={linkingBoxId === detection.id} onOpenChange={(open) => setLinkingBoxId(open ? detection.id : null)}>
+                      <PopoverTrigger asChild>
+                        <button
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1 rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                          title="Link to Part"
+                        >
+                          <Link2 className="w-3.5 h-3.5" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-48 p-2" align="start">
+                        <p className="text-xs font-medium mb-1.5">Link to part</p>
+                        <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                          {partLabels.map((label, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                onLinkBoxToPart?.(detection.id, idx);
+                                setLinkingBoxId(null);
+                              }}
+                              className="w-full text-left text-xs p-1.5 rounded hover:bg-muted truncate"
+                            >
+                              {label}
+                            </button>
+                          ))}
+                          <button
+                            onClick={() => {
+                              onLinkBoxToPart?.(detection.id, null);
+                              setLinkingBoxId(null);
+                            }}
+                            className="w-full text-left text-xs p-1.5 rounded hover:bg-muted text-muted-foreground"
+                          >
+                            Unlink
+                          </button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
               )}
 
               {/* Resize handles */}
@@ -417,12 +688,24 @@ export function DamageOverlay({
         )}
       </div>
 
-      {/* Detection count */}
-      <p className="text-sm text-muted-foreground">
-        {filteredDetections.length} of {localDetections.length} detection{localDetections.length !== 1 ? 's' : ''} shown
-        {confidenceThreshold > 0 && <span className="text-primary ml-1">(≥{(confidenceThreshold * 100).toFixed(0)}% confidence)</span>}
-        {hasChanges && <span className="text-warning ml-2">• Unsaved changes</span>}
-      </p>
+      {/* Detection count with verification stats */}
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>
+          {filteredDetections.length} of {localDetections.length} detection{localDetections.length !== 1 ? 's' : ''} shown
+          {confidenceThreshold > 0 && <span className="text-primary ml-1">(≥{(confidenceThreshold * 100).toFixed(0)}% confidence)</span>}
+          {hasChanges && <span className="text-warning ml-2">• Unsaved changes</span>}
+        </span>
+        {showVerificationControls && boxVerifications.length > 0 && (
+          <span className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/20">
+              {boxVerifications.filter(v => v.status === 'verified').length} verified
+            </Badge>
+            <Badge variant="outline" className="text-xs bg-destructive/10 text-destructive border-destructive/20">
+              {boxVerifications.filter(v => v.status === 'rejected').length} rejected
+            </Badge>
+          </span>
+        )}
+      </div>
     </div>
   );
 }
