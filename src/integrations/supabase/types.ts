@@ -136,6 +136,35 @@ export type Database = {
         }
         Relationships: []
       }
+      estimates: {
+        Row: {
+          claim_id: string
+          created_at: string
+          id: string
+          payload: Json
+        }
+        Insert: {
+          claim_id: string
+          created_at?: string
+          id?: string
+          payload: Json
+        }
+        Update: {
+          claim_id?: string
+          created_at?: string
+          id?: string
+          payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimates_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "claims"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

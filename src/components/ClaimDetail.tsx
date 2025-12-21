@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Claim, AuditLog } from '@/types/claims';
+import { Estimate } from '@/types/estimates';
 import { AssessmentResults } from './AssessmentResults';
+import { EstimateCard } from './EstimateCard';
 import { ArrowLeft, Clock, User, Bot, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -23,11 +25,27 @@ function formatDateTime(dateString: string): string {
 
 export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     fetchAuditLogs();
+    fetchEstimate();
   }, [claim.id]);
+
+  const fetchEstimate = async () => {
+    const { data, error } = await supabase
+      .from('estimates')
+      .select('*')
+      .eq('claim_id', claim.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data) {
+      setEstimate(data.payload as unknown as Estimate);
+    }
+  };
 
   const fetchAuditLogs = async () => {
     const { data, error } = await supabase
@@ -167,6 +185,14 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
               onEscalate={() => handleDecision('escalate')}
               isLoading={isLoading}
             />
+          </>
+        )}
+
+        {/* Estimate Card */}
+        {estimate && (
+          <>
+            <h2 className="font-semibold text-foreground text-lg">Repair Estimate</h2>
+            <EstimateCard estimate={estimate} />
           </>
         )}
 
