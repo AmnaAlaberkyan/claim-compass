@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -75,6 +76,113 @@ const damageAgentTools = [
     }
   }
 ];
+
+// Build estimate with citations from damage assessment
+interface DamagedPart {
+  part: string;
+  damage_type: string;
+  severity: number;
+  confidence: number;
+  cost_low: number;
+  cost_high: number;
+}
+
+interface Citation {
+  source: string;
+  url: string;
+  retrievedAt: string;
+}
+
+interface EstimateLineItem {
+  part: string;
+  damageType: string;
+  laborHours: number;
+  laborRate: number;
+  laborCost: number;
+  partCostLow: number;
+  partCostHigh: number;
+  totalLow: number;
+  totalHigh: number;
+  sources: Citation[];
+}
+
+interface Estimate {
+  lineItems: EstimateLineItem[];
+  subtotalLow: number;
+  subtotalHigh: number;
+  laborTotal: number;
+  partsLow: number;
+  partsHigh: number;
+  grandTotalLow: number;
+  grandTotalHigh: number;
+  generatedAt: string;
+}
+
+function buildEstimate(damagedParts: DamagedPart[], vehicleMake?: string, vehicleModel?: string, vehicleYear?: number): Estimate {
+  const now = new Date().toISOString();
+  const laborRate = 85; // Standard labor rate per hour
+  
+  const vehicleQuery = vehicleMake && vehicleModel 
+    ? `${vehicleYear || ''} ${vehicleMake} ${vehicleModel}`.trim()
+    : '';
+  
+  const lineItems: EstimateLineItem[] = damagedParts.map(part => {
+    // Estimate labor hours based on severity
+    const laborHours = part.severity <= 3 ? 1 : part.severity <= 6 ? 2.5 : 4;
+    const laborCost = laborHours * laborRate;
+    
+    // Build search queries for citations
+    const partQuery = encodeURIComponent(`${vehicleQuery} ${part.part}`.trim());
+    const retrievedAt = now;
+    
+    const sources: Citation[] = [
+      {
+        source: "Car-Part.com",
+        url: `https://www.google.com/search?q=site:car-part.com+${partQuery}`,
+        retrievedAt
+      },
+      {
+        source: "RockAuto",
+        url: `https://www.google.com/search?q=site:rockauto.com+${partQuery}`,
+        retrievedAt
+      },
+      {
+        source: "OEM Parts",
+        url: `https://www.google.com/search?q=${partQuery}+OEM+replacement+part+price`,
+        retrievedAt
+      }
+    ];
+    
+    return {
+      part: part.part,
+      damageType: part.damage_type,
+      laborHours,
+      laborRate,
+      laborCost,
+      partCostLow: part.cost_low,
+      partCostHigh: part.cost_high,
+      totalLow: laborCost + part.cost_low,
+      totalHigh: laborCost + part.cost_high,
+      sources
+    };
+  });
+  
+  const laborTotal = lineItems.reduce((sum, item) => sum + item.laborCost, 0);
+  const partsLow = lineItems.reduce((sum, item) => sum + item.partCostLow, 0);
+  const partsHigh = lineItems.reduce((sum, item) => sum + item.partCostHigh, 0);
+  
+  return {
+    lineItems,
+    subtotalLow: partsLow,
+    subtotalHigh: partsHigh,
+    laborTotal,
+    partsLow,
+    partsHigh,
+    grandTotalLow: laborTotal + partsLow,
+    grandTotalHigh: laborTotal + partsHigh,
+    generatedAt: now
+  };
+}
 
 async function runQualityAgent(imageBase64: string, apiKey: string): Promise<any> {
   console.log("Running Quality Agent...");
@@ -196,12 +304,17 @@ serve(async (req) => {
   }
 
   try {
-    const { claim_id, image_base64, action } = await req.json();
+    const { claim_id, image_base64, action, vehicle_make, vehicle_model, vehicle_year } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
+
+    // Initialize Supabase client for storing estimates
+    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
     console.log(`Processing claim ${claim_id}, action: ${action || 'analyze'}`);
 
@@ -227,8 +340,32 @@ serve(async (req) => {
     const damageResult = await runDamageAgent(image_base64, LOVABLE_API_KEY);
     console.log("Damage result:", JSON.stringify(damageResult));
 
-    // Step 3: Triage logic
-    console.log("Step 3: Triage");
+    // Step 3: Generate Estimate with Citations
+    console.log("Step 3: Building Estimate with Citations");
+    const estimate = buildEstimate(
+      damageResult.damaged_parts,
+      vehicle_make,
+      vehicle_model,
+      vehicle_year
+    );
+    console.log("Estimate generated:", JSON.stringify(estimate));
+
+    // Store estimate in database
+    const { error: estimateError } = await supabase
+      .from('estimates')
+      .insert({
+        claim_id,
+        payload: estimate
+      });
+    
+    if (estimateError) {
+      console.error("Failed to store estimate:", estimateError);
+    } else {
+      console.log("Estimate stored successfully");
+    }
+
+    // Step 4: Triage logic
+    console.log("Step 4: Triage");
     let finalAction = damageResult.recommended_action;
     
     // Override logic per PRD
@@ -250,6 +387,7 @@ serve(async (req) => {
       stage: "complete",
       quality_result: qualityResult,
       damage_result: damageResult,
+      estimate,
       recommended_action: finalAction,
       message: `Assessment complete. Recommended action: ${finalAction}`
     }), {

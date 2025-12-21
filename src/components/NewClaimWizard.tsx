@@ -4,6 +4,8 @@ import { ClaimForm } from './ClaimForm';
 import { PhotoUploader } from './PhotoUploader';
 import { AssessmentResults } from './AssessmentResults';
 import { ClaimFormData, QualityResult, DamageAssessment } from '@/types/claims';
+import { Estimate } from '@/types/estimates';
+import { EstimateCard } from './EstimateCard';
 import { ArrowLeft, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -21,8 +23,10 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [qualityResult, setQualityResult] = useState<QualityResult | null>(null);
   const [damageAssessment, setDamageAssessment] = useState<DamageAssessment | null>(null);
+  const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentClaim, setCurrentClaim] = useState<ClaimFormData | null>(null);
 
   const handleFormSubmit = async (data: ClaimFormData) => {
     setIsLoading(true);
@@ -55,6 +59,7 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
       }]);
 
       setFormData(data);
+      setCurrentClaim(data);
       setClaimId(newClaim.id);
       setStep('photo');
       toast.success('Claim created. Now upload a damage photo.');
@@ -101,6 +106,9 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
           body: JSON.stringify({
             claim_id: claimId,
             image_base64: base64,
+            vehicle_make: currentClaim?.vehicle_make,
+            vehicle_model: currentClaim?.vehicle_model,
+            vehicle_year: currentClaim?.vehicle_year,
           }),
         }
       );
@@ -176,6 +184,9 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
       }).eq('id', claimId);
 
       setDamageAssessment(result.damage_result);
+      if (result.estimate) {
+        setEstimate(result.estimate);
+      }
       setStep('results');
       toast.success('Analysis complete!');
     } catch (error) {
@@ -301,11 +312,13 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
         )}
 
         {step === 'results' && damageAssessment && (
-          <div className="animate-fade-in">
-            <h1 className="text-2xl font-bold text-foreground mb-2">Assessment Results</h1>
-            <p className="text-muted-foreground mb-6">
-              Review the AI assessment and make a decision.
-            </p>
+          <div className="animate-fade-in space-y-6">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground mb-2">Assessment Results</h1>
+              <p className="text-muted-foreground mb-6">
+                Review the AI assessment and make a decision.
+              </p>
+            </div>
             <AssessmentResults
               assessment={damageAssessment}
               onApprove={() => handleDecision('approve')}
@@ -313,6 +326,11 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
               onEscalate={() => handleDecision('escalate')}
               isLoading={isLoading}
             />
+            {estimate && (
+              <div className="mt-8">
+                <EstimateCard estimate={estimate} />
+              </div>
+            )}
           </div>
         )}
       </div>
