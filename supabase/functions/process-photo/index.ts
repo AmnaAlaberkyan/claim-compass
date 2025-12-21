@@ -216,19 +216,92 @@ function generateSimulatedDetections(claimId: string, description: string): Anno
   };
 }
 
+// Vehicle tier classification for pricing adjustments
+function getVehiclePricingMultiplier(make?: string, model?: string, year?: number): { laborRate: number; partMultiplier: number; tier: string } {
+  const makeLower = (make || '').toLowerCase();
+  const modelLower = (model || '').toLowerCase();
+  const currentYear = new Date().getFullYear();
+  const vehicleAge = year ? currentYear - year : 5;
+  
+  // Luxury/Premium brands - higher labor rates and part costs
+  const luxuryBrands = ['bmw', 'mercedes', 'mercedes-benz', 'audi', 'lexus', 'porsche', 'jaguar', 'land rover', 'maserati', 'bentley', 'rolls-royce', 'ferrari', 'lamborghini', 'aston martin'];
+  const premiumBrands = ['acura', 'infiniti', 'volvo', 'lincoln', 'cadillac', 'alfa romeo', 'genesis', 'tesla'];
+  const economyBrands = ['kia', 'hyundai', 'nissan', 'mazda', 'subaru', 'mitsubishi'];
+  
+  // Check for luxury performance models in non-luxury brands
+  const performanceModels = ['gt', 'sport', 'type r', 'sti', 'wrx', 'amg', 'm3', 'm5', 'rs', 'srt', 'hellcat', 'shelby', 'corvette', 'camaro zl1'];
+  const isPerformanceModel = performanceModels.some(pm => modelLower.includes(pm));
+  
+  let baseLaborRate = 75; // Default economy rate
+  let partMultiplier = 1.0;
+  let tier = 'economy';
+  
+  if (luxuryBrands.some(b => makeLower.includes(b))) {
+    baseLaborRate = 125;
+    partMultiplier = 1.8;
+    tier = 'luxury';
+  } else if (premiumBrands.some(b => makeLower.includes(b))) {
+    baseLaborRate = 100;
+    partMultiplier = 1.4;
+    tier = 'premium';
+  } else if (isPerformanceModel) {
+    baseLaborRate = 110;
+    partMultiplier = 1.5;
+    tier = 'performance';
+  } else if (economyBrands.some(b => makeLower.includes(b))) {
+    baseLaborRate = 70;
+    partMultiplier = 0.85;
+    tier = 'economy';
+  } else {
+    // Standard domestic/import brands (Ford, Chevy, Toyota, Honda, etc.)
+    baseLaborRate = 85;
+    partMultiplier = 1.0;
+    tier = 'standard';
+  }
+  
+  // Age adjustment: newer vehicles cost more (OEM parts availability), very old vehicles may cost more (scarcity)
+  let ageMultiplier = 1.0;
+  if (vehicleAge <= 2) {
+    ageMultiplier = 1.15; // New vehicles, OEM parts premium
+  } else if (vehicleAge <= 5) {
+    ageMultiplier = 1.0; // Sweet spot
+  } else if (vehicleAge <= 10) {
+    ageMultiplier = 0.9; // Aftermarket parts available
+  } else if (vehicleAge <= 15) {
+    ageMultiplier = 0.85; // Good aftermarket supply
+  } else {
+    ageMultiplier = 1.05; // Older vehicles, parts scarcity
+  }
+  
+  return {
+    laborRate: Math.round(baseLaborRate * (vehicleAge <= 3 ? 1.1 : 1.0)),
+    partMultiplier: partMultiplier * ageMultiplier,
+    tier
+  };
+}
+
 function buildEstimate(damagedParts: DamagedPart[], vehicleMake?: string, vehicleModel?: string, vehicleYear?: number): Estimate {
   const now = new Date().toISOString();
-  const laborRate = 85;
+  
+  // Get vehicle-specific pricing
+  const pricing = getVehiclePricingMultiplier(vehicleMake, vehicleModel, vehicleYear);
+  const laborRate = pricing.laborRate;
   
   const vehicleQuery = vehicleMake && vehicleModel 
     ? `${vehicleYear || ''} ${vehicleMake} ${vehicleModel}`.trim()
     : '';
+  
+  console.log(`Building estimate for ${vehicleQuery || 'unknown vehicle'} - Tier: ${pricing.tier}, Labor rate: $${laborRate}/hr, Part multiplier: ${pricing.partMultiplier.toFixed(2)}x`);
   
   const lineItems: EstimateLineItem[] = damagedParts.map(part => {
     const laborHours = part.severity <= 3 ? 1 : part.severity <= 6 ? 2.5 : 4;
     const laborCost = laborHours * laborRate;
     const partQuery = encodeURIComponent(`${vehicleQuery} ${part.part}`.trim());
     const retrievedAt = now;
+    
+    // Apply vehicle-specific part cost multiplier
+    const adjustedPartCostLow = Math.round(part.cost_low * pricing.partMultiplier);
+    const adjustedPartCostHigh = Math.round(part.cost_high * pricing.partMultiplier);
     
     const sources: Citation[] = [
       { source: "Car-Part.com", url: `https://www.google.com/search?q=site:car-part.com+${partQuery}`, retrievedAt },
@@ -242,10 +315,10 @@ function buildEstimate(damagedParts: DamagedPart[], vehicleMake?: string, vehicl
       laborHours,
       laborRate,
       laborCost,
-      partCostLow: part.cost_low,
-      partCostHigh: part.cost_high,
-      totalLow: laborCost + part.cost_low,
-      totalHigh: laborCost + part.cost_high,
+      partCostLow: adjustedPartCostLow,
+      partCostHigh: adjustedPartCostHigh,
+      totalLow: laborCost + adjustedPartCostLow,
+      totalHigh: laborCost + adjustedPartCostHigh,
       sources
     };
   });
