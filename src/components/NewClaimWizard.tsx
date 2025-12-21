@@ -51,7 +51,7 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
         action: 'claim_created',
         actor: 'System',
         actor_type: 'human',
-        details: { form_data: data },
+        details: JSON.parse(JSON.stringify({ form_data: data })),
       }]);
 
       setFormData(data);
