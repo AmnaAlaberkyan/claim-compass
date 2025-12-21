@@ -5,7 +5,9 @@ import { PhotoUploader } from './PhotoUploader';
 import { AssessmentResults } from './AssessmentResults';
 import { ClaimFormData, QualityResult, DamageAssessment } from '@/types/claims';
 import { Estimate } from '@/types/estimates';
+import { Annotations } from '@/types/annotations';
 import { EstimateCard } from './EstimateCard';
+import { DamageOverlay } from './DamageOverlay';
 import { ArrowLeft, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -24,6 +26,7 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
   const [qualityResult, setQualityResult] = useState<QualityResult | null>(null);
   const [damageAssessment, setDamageAssessment] = useState<DamageAssessment | null>(null);
   const [estimate, setEstimate] = useState<Estimate | null>(null);
+  const [annotations, setAnnotations] = useState<Annotations | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [currentClaim, setCurrentClaim] = useState<ClaimFormData | null>(null);
@@ -187,6 +190,9 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
       if (result.estimate) {
         setEstimate(result.estimate);
       }
+      if (result.annotations) {
+        setAnnotations(result.annotations);
+      }
       setStep('results');
       toast.success('Analysis complete!');
     } catch (error) {
@@ -326,6 +332,16 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
               onEscalate={() => handleDecision('escalate')}
               isLoading={isLoading}
             />
+            {photoBase64 && annotations && (
+              <div className="mt-8">
+                <h3 className="font-semibold text-foreground mb-3">Damage Localization</h3>
+                <DamageOverlay
+                  imageUrl={`data:image/jpeg;base64,${photoBase64}`}
+                  annotations={annotations}
+                  editable={false}
+                />
+              </div>
+            )}
             {estimate && (
               <div className="mt-8">
                 <EstimateCard estimate={estimate} />
