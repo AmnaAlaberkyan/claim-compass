@@ -58,6 +58,7 @@ export type Database = {
           adjuster_notes: string | null
           ai_recommendation: string | null
           ai_summary: string | null
+          annotations_json: Json | null
           claimant_name: string
           confidence_score: number | null
           cost_high: number | null
@@ -85,6 +86,7 @@ export type Database = {
           adjuster_notes?: string | null
           ai_recommendation?: string | null
           ai_summary?: string | null
+          annotations_json?: Json | null
           claimant_name: string
           confidence_score?: number | null
           cost_high?: number | null
@@ -112,6 +114,7 @@ export type Database = {
           adjuster_notes?: string | null
           ai_recommendation?: string | null
           ai_summary?: string | null
+          annotations_json?: Json | null
           claimant_name?: string
           confidence_score?: number | null
           cost_high?: number | null

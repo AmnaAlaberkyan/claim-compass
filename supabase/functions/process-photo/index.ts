@@ -77,6 +77,48 @@ const damageAgentTools = [
   }
 ];
 
+// Localization agent tools for bounding box detection
+const localizationAgentTools = [
+  {
+    type: "function",
+    function: {
+      name: "detect_damage_locations",
+      description: "Detect and localize damage areas in a vehicle photo with bounding boxes",
+      parameters: {
+        type: "object",
+        properties: {
+          detections: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string", description: "Unique identifier like det_1, det_2" },
+                label: { type: "string", enum: ["scratch", "dent", "crack", "broken", "paint_transfer", "misalignment", "unknown"] },
+                part: { type: "string", description: "Vehicle part: front bumper, left fender, hood, door, quarter panel, headlight, taillight, etc." },
+                severity: { type: "string", enum: ["minor", "moderate", "severe"] },
+                confidence: { type: "number", description: "Confidence 0.0-1.0" },
+                box: {
+                  type: "object",
+                  properties: {
+                    x: { type: "number", description: "Top-left X coordinate normalized 0.0-1.0" },
+                    y: { type: "number", description: "Top-left Y coordinate normalized 0.0-1.0" },
+                    w: { type: "number", description: "Width normalized 0.0-1.0" },
+                    h: { type: "number", description: "Height normalized 0.0-1.0" }
+                  },
+                  required: ["x", "y", "w", "h"]
+                }
+              },
+              required: ["id", "label", "part", "severity", "confidence", "box"]
+            }
+          },
+          notes: { type: "string", description: "Optional notes about the detection quality or uncertainty" }
+        },
+        required: ["detections"]
+      }
+    }
+  }
+];
+
 // Build estimate with citations from damage assessment
 interface DamagedPart {
   part: string;
@@ -118,39 +160,80 @@ interface Estimate {
   generatedAt: string;
 }
 
+interface Detection {
+  id: string;
+  label: string;
+  part: string;
+  severity: string;
+  confidence: number;
+  box: { x: number; y: number; w: number; h: number };
+}
+
+interface Annotations {
+  detections: Detection[];
+  notes?: string;
+}
+
+// Generate simulated detections based on claim data (deterministic)
+function generateSimulatedDetections(claimId: string, description: string): Annotations {
+  let hash = 0;
+  const seed = claimId + description;
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  
+  const labels = ['scratch', 'dent', 'crack', 'broken', 'paint_transfer', 'misalignment'];
+  const parts = ['front bumper', 'left fender', 'hood', 'left door', 'quarter panel', 'headlight'];
+  const severities = ['minor', 'moderate', 'severe'];
+  
+  const numDetections = 2 + (Math.abs(hash) % 3);
+  const detections: Detection[] = [];
+  
+  for (let i = 0; i < numDetections; i++) {
+    const subHash = hash + i * 12345;
+    const baseX = 0.1 + ((Math.abs(subHash) % 50) / 100);
+    const baseY = 0.15 + ((Math.abs(subHash * 7) % 50) / 100);
+    
+    detections.push({
+      id: `det_${i + 1}`,
+      label: labels[Math.abs(subHash) % labels.length],
+      part: parts[Math.abs(subHash * 3) % parts.length],
+      severity: severities[Math.abs(subHash * 5) % severities.length],
+      confidence: 0.7 + ((Math.abs(subHash) % 25) / 100),
+      box: {
+        x: Math.min(baseX, 0.65),
+        y: Math.min(baseY, 0.65),
+        w: 0.18 + ((Math.abs(subHash * 11) % 12) / 100),
+        h: 0.15 + ((Math.abs(subHash * 13) % 10) / 100),
+      }
+    });
+  }
+  
+  return {
+    detections,
+    notes: 'Simulated detections for demo purposes'
+  };
+}
+
 function buildEstimate(damagedParts: DamagedPart[], vehicleMake?: string, vehicleModel?: string, vehicleYear?: number): Estimate {
   const now = new Date().toISOString();
-  const laborRate = 85; // Standard labor rate per hour
+  const laborRate = 85;
   
   const vehicleQuery = vehicleMake && vehicleModel 
     ? `${vehicleYear || ''} ${vehicleMake} ${vehicleModel}`.trim()
     : '';
   
   const lineItems: EstimateLineItem[] = damagedParts.map(part => {
-    // Estimate labor hours based on severity
     const laborHours = part.severity <= 3 ? 1 : part.severity <= 6 ? 2.5 : 4;
     const laborCost = laborHours * laborRate;
-    
-    // Build search queries for citations
     const partQuery = encodeURIComponent(`${vehicleQuery} ${part.part}`.trim());
     const retrievedAt = now;
     
     const sources: Citation[] = [
-      {
-        source: "Car-Part.com",
-        url: `https://www.google.com/search?q=site:car-part.com+${partQuery}`,
-        retrievedAt
-      },
-      {
-        source: "RockAuto",
-        url: `https://www.google.com/search?q=site:rockauto.com+${partQuery}`,
-        retrievedAt
-      },
-      {
-        source: "OEM Parts",
-        url: `https://www.google.com/search?q=${partQuery}+OEM+replacement+part+price`,
-        retrievedAt
-      }
+      { source: "Car-Part.com", url: `https://www.google.com/search?q=site:car-part.com+${partQuery}`, retrievedAt },
+      { source: "RockAuto", url: `https://www.google.com/search?q=site:rockauto.com+${partQuery}`, retrievedAt },
+      { source: "OEM Parts", url: `https://www.google.com/search?q=${partQuery}+OEM+replacement+part+price`, retrievedAt }
     ];
     
     return {
@@ -298,6 +381,70 @@ You can NEVER deny a claim. Only approve, review, or escalate.`
   throw new Error("No damage assessment returned");
 }
 
+async function runLocalizationAgent(imageBase64: string, apiKey: string): Promise<Annotations> {
+  console.log("Running Localization Agent...");
+  
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content: `You are a damage localization agent for insurance claims. Your job is to identify and locate all visible damage areas in vehicle photos.
+
+INSTRUCTIONS:
+- Identify each distinct damage area with a bounding box
+- Use normalized coordinates (0-1) where (0,0) is top-left
+- Be precise with box placement - the box should tightly contain the damage
+- Label each damage type accurately: scratch, dent, crack, broken, paint_transfer, misalignment, or unknown
+- Identify the vehicle part affected
+- Rate severity as minor (cosmetic), moderate (functional), or severe (structural)
+- Provide confidence 0-1 based on visibility and certainty
+- If you cannot clearly identify damage locations, return an empty detections array
+
+Output ONLY valid JSON through the function call.`
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Analyze this vehicle photo and identify all damage locations with bounding boxes. Return normalized coordinates (0-1) for each detection." },
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}` } }
+            ]
+          }
+        ],
+        tools: localizationAgentTools,
+        tool_choice: { type: "function", function: { name: "detect_damage_locations" } }
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Localization Agent error:", response.status, errorText);
+      throw new Error(`Localization Agent failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    
+    if (toolCall?.function?.arguments) {
+      const result = JSON.parse(toolCall.function.arguments);
+      console.log("Localization result:", JSON.stringify(result));
+      return result as Annotations;
+    }
+    
+    throw new Error("No localization result returned");
+  } catch (error) {
+    console.error("Localization agent error, falling back to simulation:", error);
+    throw error;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -364,8 +511,32 @@ serve(async (req) => {
       console.log("Estimate stored successfully");
     }
 
-    // Step 4: Triage logic
-    console.log("Step 4: Triage");
+    // Step 4: Damage Localization (bounding boxes)
+    console.log("Step 4: Damage Localization");
+    let annotations: Annotations;
+    
+    try {
+      annotations = await runLocalizationAgent(image_base64, LOVABLE_API_KEY);
+      console.log("Localization complete:", JSON.stringify(annotations));
+    } catch (locError) {
+      console.log("AI localization failed, using simulated detections");
+      annotations = generateSimulatedDetections(claim_id, damageResult.summary || '');
+    }
+
+    // Update claim with annotations
+    const { error: annotationError } = await supabase
+      .from('claims')
+      .update({ annotations_json: annotations })
+      .eq('id', claim_id);
+    
+    if (annotationError) {
+      console.error("Failed to store annotations:", annotationError);
+    } else {
+      console.log("Annotations stored successfully");
+    }
+
+    // Step 5: Triage logic
+    console.log("Step 5: Triage");
     let finalAction = damageResult.recommended_action;
     
     // Override logic per PRD
@@ -388,6 +559,7 @@ serve(async (req) => {
       quality_result: qualityResult,
       damage_result: damageResult,
       estimate,
+      annotations,
       recommended_action: finalAction,
       message: `Assessment complete. Recommended action: ${finalAction}`
     }), {

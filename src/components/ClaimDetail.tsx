@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Claim, AuditLog } from '@/types/claims';
 import { Estimate } from '@/types/estimates';
+import { Annotations } from '@/types/annotations';
 import { AssessmentResults } from './AssessmentResults';
 import { EstimateCard } from './EstimateCard';
+import { DamageOverlay } from './DamageOverlay';
 import { ArrowLeft, Clock, User, Bot, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -26,12 +28,29 @@ function formatDateTime(dateString: string): string {
 export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [estimate, setEstimate] = useState<Estimate | null>(null);
+  const [annotations, setAnnotations] = useState<Annotations | null>(null);
+  const [originalAnnotations, setOriginalAnnotations] = useState<Annotations | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     fetchAuditLogs();
     fetchEstimate();
+    fetchAnnotations();
   }, [claim.id]);
+
+  const fetchAnnotations = async () => {
+    const { data, error } = await supabase
+      .from('claims')
+      .select('annotations_json')
+      .eq('id', claim.id)
+      .single();
+
+    if (!error && data?.annotations_json) {
+      const parsed = data.annotations_json as unknown as Annotations;
+      setAnnotations(parsed);
+      setOriginalAnnotations(parsed);
+    }
+  };
 
   const fetchEstimate = async () => {
     const { data, error } = await supabase
@@ -108,6 +127,75 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
     }
   };
 
+  const handleSaveAnnotations = async (newAnnotations: Annotations) => {
+    try {
+      // Log the edit with before/after JSON
+      await supabase.from('audit_logs').insert([{
+        claim_id: claim.id,
+        action: 'edit_annotations',
+        actor: 'Adjuster',
+        actor_type: 'human',
+        details: JSON.parse(JSON.stringify({
+          before_json: originalAnnotations,
+          after_json: newAnnotations,
+        })),
+      }]);
+
+      // Update the claim
+      const { error } = await supabase
+        .from('claims')
+        .update({ annotations_json: JSON.parse(JSON.stringify(newAnnotations)) })
+        .eq('id', claim.id);
+
+      if (error) throw error;
+
+      setAnnotations(newAnnotations);
+      setOriginalAnnotations(newAnnotations);
+      fetchAuditLogs();
+      toast.success('Annotations saved');
+    } catch (error) {
+      console.error('Error saving annotations:', error);
+      toast.error('Failed to save annotations');
+    }
+  };
+
+  const handleResetAnnotations = () => {
+    if (originalAnnotations) {
+      setAnnotations({ ...originalAnnotations });
+    }
+  };
+
+  const handleMarkUncertain = async () => {
+    try {
+      await supabase.from('audit_logs').insert([{
+        claim_id: claim.id,
+        action: 'annotations_marked_uncertain',
+        actor: 'Adjuster',
+        actor_type: 'human',
+        details: { reason: 'Adjuster marked annotations as uncertain' },
+      }]);
+
+      // Update annotations with uncertainty note
+      const updatedAnnotations: Annotations = {
+        ...annotations,
+        detections: annotations?.detections || [],
+        notes: 'Marked as uncertain by adjuster',
+      };
+
+      await supabase
+        .from('claims')
+        .update({ annotations_json: JSON.parse(JSON.stringify(updatedAnnotations)) })
+        .eq('id', claim.id);
+
+      setAnnotations(updatedAnnotations);
+      fetchAuditLogs();
+      toast.success('Annotations marked as uncertain');
+    } catch (error) {
+      console.error('Error marking uncertain:', error);
+      toast.error('Failed to mark as uncertain');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -162,14 +250,17 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
           </div>
         </div>
 
-        {/* Photo */}
+        {/* Photo with Damage Overlay */}
         {claim.photo_url && (
           <div className="card-apple p-6">
-            <h2 className="font-semibold text-foreground mb-4">Damage Photo</h2>
-            <img 
-              src={claim.photo_url} 
-              alt="Damage" 
-              className="rounded-lg max-h-96 w-full object-contain bg-muted"
+            <h2 className="font-semibold text-foreground mb-4">Damage Photo & Localization</h2>
+            <DamageOverlay
+              imageUrl={claim.photo_url}
+              annotations={annotations}
+              editable={true}
+              onSave={handleSaveAnnotations}
+              onReset={handleResetAnnotations}
+              onMarkUncertain={handleMarkUncertain}
             />
           </div>
         )}
