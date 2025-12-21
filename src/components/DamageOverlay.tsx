@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Detection, Annotations, SeverityLevel } from '@/types/annotations';
-import { X, Eye, EyeOff, RotateCcw, Save, AlertTriangle } from 'lucide-react';
+import { X, Eye, EyeOff, RotateCcw, Save, AlertTriangle, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
+import { Slider } from '@/components/ui/slider';
 interface DamageOverlayProps {
   imageUrl: string;
   annotations: Annotations | null;
@@ -45,6 +45,10 @@ export function DamageOverlay({
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [hasChanges, setHasChanges] = useState(false);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0);
+
+  // Filter detections based on confidence threshold
+  const filteredDetections = localDetections.filter(d => d.confidence >= confidenceThreshold);
 
   useEffect(() => {
     if (annotations?.detections) {
@@ -249,46 +253,67 @@ export function DamageOverlay({
   return (
     <div className="space-y-3">
       {/* Controls */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => setShowOverlay(!showOverlay)}
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {showOverlay ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-          {showOverlay ? 'Hide' : 'Show'} Overlay
-        </button>
-        
-        {editable && (
-          <div className="flex items-center gap-2">
-            {onMarkUncertain && (
-              <button
-                onClick={onMarkUncertain}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-warning hover:bg-warning/10 rounded-lg transition-colors"
-              >
-                <AlertTriangle className="w-4 h-4" />
-                Mark Uncertain
-              </button>
-            )}
-            <button
-              onClick={handleReset}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-            >
-              <RotateCcw className="w-4 h-4" />
-              Reset to AI
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!hasChanges}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors",
-                hasChanges 
-                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                  : "bg-muted text-muted-foreground cursor-not-allowed"
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setShowOverlay(!showOverlay)}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showOverlay ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            {showOverlay ? 'Hide' : 'Show'} Overlay
+          </button>
+          
+          {editable && (
+            <div className="flex items-center gap-2">
+              {onMarkUncertain && (
+                <button
+                  onClick={onMarkUncertain}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-warning hover:bg-warning/10 rounded-lg transition-colors"
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  Mark Uncertain
+                </button>
               )}
-            >
-              <Save className="w-4 h-4" />
-              Save Annotations
-            </button>
+              <button
+                onClick={handleReset}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Reset to AI
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!hasChanges}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors",
+                  hasChanges 
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-muted text-muted-foreground cursor-not-allowed"
+                )}
+              >
+                <Save className="w-4 h-4" />
+                Save Annotations
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Confidence threshold slider */}
+        {showOverlay && localDetections.length > 0 && (
+          <div className="flex items-center gap-3 px-1">
+            <SlidersHorizontal className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Confidence</span>
+            <Slider
+              value={[confidenceThreshold]}
+              onValueChange={(value) => setConfidenceThreshold(value[0])}
+              min={0}
+              max={1}
+              step={0.05}
+              className="flex-1 max-w-[200px]"
+            />
+            <span className="text-xs font-mono text-muted-foreground w-10 text-right">
+              ≥{(confidenceThreshold * 100).toFixed(0)}%
+            </span>
           </div>
         )}
       </div>
@@ -313,7 +338,7 @@ export function DamageOverlay({
         />
 
         {/* Detection boxes */}
-        {showOverlay && imageDims.width > 0 && localDetections.map(detection => {
+        {showOverlay && imageDims.width > 0 && filteredDetections.map(detection => {
           const coords = getPixelCoords(detection.box);
           const isSelected = selectedId === detection.id;
           
@@ -394,7 +419,8 @@ export function DamageOverlay({
 
       {/* Detection count */}
       <p className="text-sm text-muted-foreground">
-        {localDetections.length} detection{localDetections.length !== 1 ? 's' : ''} identified
+        {filteredDetections.length} of {localDetections.length} detection{localDetections.length !== 1 ? 's' : ''} shown
+        {confidenceThreshold > 0 && <span className="text-primary ml-1">(≥{(confidenceThreshold * 100).toFixed(0)}% confidence)</span>}
         {hasChanges && <span className="text-warning ml-2">• Unsaved changes</span>}
       </p>
     </div>
