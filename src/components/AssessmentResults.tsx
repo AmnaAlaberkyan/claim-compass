@@ -7,6 +7,7 @@ interface AssessmentResultsProps {
   onEdit: () => void;
   onEscalate: () => void;
   isLoading?: boolean;
+  hideActions?: boolean;
 }
 
 function getSeverityClass(severity: number): string {
@@ -37,7 +38,8 @@ export function AssessmentResults({
   onApprove, 
   onEdit, 
   onEscalate,
-  isLoading 
+  isLoading,
+  hideActions = false,
 }: AssessmentResultsProps) {
   return (
     <div className="space-y-6 animate-slide-up">
@@ -173,29 +175,31 @@ export function AssessmentResults({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex gap-4">
-        <button
-          onClick={onApprove}
-          disabled={isLoading}
-          className="btn-success flex-1"
-        >
-          Approve
-        </button>
-        <button
-          onClick={onEdit}
-          disabled={isLoading}
-          className="btn-secondary flex-1"
-        >
-          Edit
-        </button>
-        <button
-          onClick={onEscalate}
-          disabled={isLoading}
-          className="btn-destructive flex-1"
-        >
-          Escalate
-        </button>
-      </div>
+      {!hideActions && (
+        <div className="flex gap-4">
+          <button
+            onClick={onApprove}
+            disabled={isLoading}
+            className="btn-success flex-1"
+          >
+            Approve
+          </button>
+          <button
+            onClick={onEdit}
+            disabled={isLoading}
+            className="btn-secondary flex-1"
+          >
+            Edit
+          </button>
+          <button
+            onClick={onEscalate}
+            disabled={isLoading}
+            className="btn-destructive flex-1"
+          >
+            Escalate
+          </button>
+        </div>
+      )}
     </div>
   );
 }

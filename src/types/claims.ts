@@ -1,3 +1,5 @@
+export type IntakePreference = 'ai_first' | 'human_requested';
+
 export interface Claim {
   id: string;
   policy_number: string;
@@ -22,6 +24,10 @@ export interface Claim {
   fraud_indicators?: string[];
   adjuster_decision?: string;
   adjuster_notes?: string;
+  // Human review request fields
+  human_review_requested: boolean;
+  human_review_reason?: string;
+  intake_preference: IntakePreference;
   created_at: string;
   updated_at: string;
 }

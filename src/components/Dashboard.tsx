@@ -9,7 +9,7 @@ interface DashboardProps {
   onSelectClaim: (claim: Claim) => void;
 }
 
-type FilterStatus = 'all' | 'pending' | 'escalated' | 'approved';
+type FilterStatus = 'all' | 'pending' | 'escalated' | 'approved' | 'human_requested';
 
 export function Dashboard({ onNewClaim, onSelectClaim }: DashboardProps) {
   const [claims, setClaims] = useState<Claim[]>([]);
@@ -55,6 +55,9 @@ export function Dashboard({ onNewClaim, onSelectClaim }: DashboardProps) {
         fraud_indicators: item.fraud_indicators || undefined,
         adjuster_decision: item.adjuster_decision || undefined,
         adjuster_notes: item.adjuster_notes || undefined,
+        human_review_requested: (item as any).human_review_requested ?? false,
+        human_review_reason: (item as any).human_review_reason || undefined,
+        intake_preference: ((item as any).intake_preference || 'ai_first') as Claim['intake_preference'],
         created_at: item.created_at,
         updated_at: item.updated_at,
       }));
@@ -65,12 +68,16 @@ export function Dashboard({ onNewClaim, onSelectClaim }: DashboardProps) {
 
   const filteredClaims = claims.filter(claim => {
     if (filter === 'all') return true;
-    if (filter === 'pending') return claim.status === 'pending' || claim.status === 'processing' || claim.status === 'review';
+    if (filter === 'human_requested') return claim.human_review_requested;
+    if (filter === 'pending') return (claim.status === 'pending' || claim.status === 'processing' || claim.status === 'review') && !claim.human_review_requested;
     return claim.status === filter;
   });
 
-  const filters: { label: string; value: FilterStatus }[] = [
+  const humanRequestedCount = claims.filter(c => c.human_review_requested && c.status !== 'approved').length;
+
+  const filters: { label: string; value: FilterStatus; count?: number }[] = [
     { label: 'All', value: 'all' },
+    { label: 'Human Requested', value: 'human_requested', count: humanRequestedCount },
     { label: 'Pending', value: 'pending' },
     { label: 'Escalated', value: 'escalated' },
     { label: 'Approved', value: 'approved' },
@@ -102,13 +109,20 @@ export function Dashboard({ onNewClaim, onSelectClaim }: DashboardProps) {
             <button
               key={f.value}
               onClick={() => setFilter(f.value)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
                 filter === f.value
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  ? f.value === 'human_requested' ? 'bg-warning text-warning-foreground' : 'bg-primary text-primary-foreground'
+                  : f.value === 'human_requested' && f.count && f.count > 0 ? 'bg-warning/20 text-warning hover:bg-warning/30' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
               }`}
             >
               {f.label}
+              {f.count !== undefined && f.count > 0 && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                  filter === f.value ? 'bg-white/20' : 'bg-warning/30'
+                }`}>
+                  {f.count}
+                </span>
+              )}
             </button>
           ))}
         </div>
