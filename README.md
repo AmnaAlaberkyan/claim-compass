@@ -1,73 +1,52 @@
-# Welcome to your Lovable project
+# 🧭 Claim Compass
 
-## Project info
+**AI-powered vehicle insurance claims processing.** 60-second assessments, configurable routing, full auditability.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+🔗 **[Live Demo](https://clarity-claims-ai.lovable.app)** 
 
-## How can I edit this code?
+---
 
-There are several ways of editing your application.
+## How It Works
 
-**Use Lovable**
+```
+📸 Photo → 🔍 Quality Gate → 🔬 Damage Detection → 📍 Localization → 🚦 Smart Routing → 👤 Human Verification → ✅ Done
+```
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+**Three AI agents** (Gemini 2.5 Flash + Pro) assess damage in under 60 seconds. **Configurable rules** route claims to approve, review, or escalate. **Adjusters verify, reject, or edit**—every action logged, every correction becomes training data.
 
-Changes made via Lovable will be committed automatically to this repo.
+---
 
-**Use your preferred IDE**
+## Features
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+- **Claimants:** Choose AI-first or human review • Real-time status tracking
+- **Adjusters:** Bounding box evidence • One-click decisions with reason codes  
+- **Ops:** Tune thresholds at `/controls` without code changes
+- **Compliance:** Complete audit trail at `/kpis`
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+---
 
-Follow these steps:
+## Tech Stack
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+React • TypeScript • Tailwind • Shadcn/UI • Supabase • Gemini AI • Vite • Lovable
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+---
 
-# Step 3: Install the necessary dependencies.
-npm i
+## Quick Start
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+**Option 1:** Use the [Live Demo](https://clarity-claims-ai.lovable.app)
+
+**Option 2:** Run locally
+```bash
+git clone https://github.com/AmnaAlaberkyan/claim-compass.git
+cd claim-compass
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+**Option 3:** Edit directly on [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID)
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+---
 
-**Use GitHub Codespaces**
+## Core Principle
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+> AI can auto-approve, never auto-deny. Every decision auditable. Adjuster corrections become training data.
