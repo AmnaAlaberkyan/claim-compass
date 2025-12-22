@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Claim } from '@/types/claims';
 import { ClaimCard } from './ClaimCard';
-import { Plus, Filter, Settings2 } from 'lucide-react';
+import { Plus, Filter, Settings2, BarChart3 } from 'lucide-react';
 
 interface DashboardProps {
   onNewClaim: () => void;
@@ -102,13 +102,22 @@ export function Dashboard({ onNewClaim, onSelectClaim }: DashboardProps) {
             <Plus className="w-4 h-4" />
             New Claim
           </button>
-          <button 
-            onClick={() => navigate('/controls')} 
-            className="p-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
-            title="Routing Controls"
-          >
-            <Settings2 className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => navigate('/kpis')} 
+              className="p-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+              title="KPI Dashboard"
+            >
+              <BarChart3 className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={() => navigate('/controls')} 
+              className="p-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+              title="Routing Controls"
+            >
+              <Settings2 className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </header>
 

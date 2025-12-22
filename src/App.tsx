@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import Index from "./pages/Index";
 import Controls from "./pages/Controls";
+import KPIs from "./pages/KPIs";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -20,6 +21,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/controls" element={<Controls />} />
+            <Route path="/kpis" element={<KPIs />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
