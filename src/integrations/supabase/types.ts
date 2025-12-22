@@ -76,6 +76,8 @@ export type Database = {
           policy_number: string
           quality_issues: Json | null
           quality_score: number | null
+          routing_reasons: Json | null
+          routing_snapshot: Json | null
           safety_concerns: string[] | null
           severity_score: number | null
           status: Database["public"]["Enums"]["claim_status"]
@@ -107,6 +109,8 @@ export type Database = {
           policy_number: string
           quality_issues?: Json | null
           quality_score?: number | null
+          routing_reasons?: Json | null
+          routing_snapshot?: Json | null
           safety_concerns?: string[] | null
           severity_score?: number | null
           status?: Database["public"]["Enums"]["claim_status"]
@@ -138,6 +142,8 @@ export type Database = {
           policy_number?: string
           quality_issues?: Json | null
           quality_score?: number | null
+          routing_reasons?: Json | null
+          routing_snapshot?: Json | null
           safety_concerns?: string[] | null
           severity_score?: number | null
           status?: Database["public"]["Enums"]["claim_status"]
@@ -145,6 +151,33 @@ export type Database = {
           vehicle_make?: string
           vehicle_model?: string
           vehicle_year?: number
+        }
+        Relationships: []
+      }
+      controls: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          key: string
+          updated_at?: string
+          value: Json
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          key?: string
+          updated_at?: string
+          value?: Json
         }
         Relationships: []
       }

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Claim } from '@/types/claims';
 import { ClaimCard } from './ClaimCard';
-import { Plus, Filter } from 'lucide-react';
+import { Plus, Filter, Settings2 } from 'lucide-react';
 
 interface DashboardProps {
   onNewClaim: () => void;
@@ -12,6 +13,7 @@ interface DashboardProps {
 type FilterStatus = 'all' | 'pending' | 'escalated' | 'approved' | 'human_requested';
 
 export function Dashboard({ onNewClaim, onSelectClaim }: DashboardProps) {
+  const navigate = useNavigate();
   const [claims, setClaims] = useState<Claim[]>([]);
   const [filter, setFilter] = useState<FilterStatus>('all');
   const [isLoading, setIsLoading] = useState(true);
@@ -55,9 +57,11 @@ export function Dashboard({ onNewClaim, onSelectClaim }: DashboardProps) {
         fraud_indicators: item.fraud_indicators || undefined,
         adjuster_decision: item.adjuster_decision || undefined,
         adjuster_notes: item.adjuster_notes || undefined,
-        human_review_requested: (item as any).human_review_requested ?? false,
-        human_review_reason: (item as any).human_review_reason || undefined,
-        intake_preference: ((item as any).intake_preference || 'ai_first') as Claim['intake_preference'],
+        human_review_requested: item.human_review_requested ?? false,
+        human_review_reason: item.human_review_reason || undefined,
+        intake_preference: (item.intake_preference || 'ai_first') as Claim['intake_preference'],
+        routing_reasons: item.routing_reasons as Claim['routing_reasons'] || undefined,
+        routing_snapshot: item.routing_snapshot as Claim['routing_snapshot'] || undefined,
         created_at: item.created_at,
         updated_at: item.updated_at,
       }));
@@ -97,6 +101,13 @@ export function Dashboard({ onNewClaim, onSelectClaim }: DashboardProps) {
           <button onClick={onNewClaim} className="btn-primary flex items-center gap-2">
             <Plus className="w-4 h-4" />
             New Claim
+          </button>
+          <button 
+            onClick={() => navigate('/controls')} 
+            className="p-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+            title="Routing Controls"
+          >
+            <Settings2 className="w-5 h-5" />
           </button>
         </div>
       </header>

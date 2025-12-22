@@ -28,6 +28,8 @@ export interface Claim {
   human_review_requested: boolean;
   human_review_reason?: string;
   intake_preference: IntakePreference;
+  routing_reasons?: Array<{ code: string; message: string }>;
+  routing_snapshot?: Record<string, number | boolean>;
   created_at: string;
   updated_at: string;
 }
