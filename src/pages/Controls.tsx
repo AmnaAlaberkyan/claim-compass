@@ -36,17 +36,22 @@ export default function Controls() {
     setLocalControls(controls);
   }, [controls]);
 
-  const logManagerAction = async (action: string, details: Record<string, unknown>) => {
+  const logManagerAction = async (eventType: string, details: Record<string, unknown>) => {
+    const payload = JSON.parse(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      ...details,
+    }));
+    const snapshots = details.before && details.after ? JSON.parse(JSON.stringify({
+      before_json: details.before,
+      after_json: details.after,
+    })) : null;
     await supabase.from('audit_logs').insert([{
       claim_id: null,
-      action: 'manager_action',
-      actor: 'Manager',
-      actor_type: 'human',
-      details: {
-        action,
-        timestamp: new Date().toISOString(),
-        ...details,
-      },
+      event_type: eventType,
+      actor_type: 'manager',
+      actor_id: 'Manager',
+      payload,
+      snapshots,
     }]);
   };
 

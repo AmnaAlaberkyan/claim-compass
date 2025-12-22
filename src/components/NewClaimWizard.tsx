@@ -59,14 +59,20 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
   const damagedParts = damageAssessment?.damaged_parts || [];
 
   // Part verification handlers
-  const logVerificationAction = async (action: string, details: Record<string, unknown>) => {
+  const logVerificationAction = async (eventType: string, details: Record<string, unknown>) => {
     if (!claimId) return;
+    const payload = JSON.parse(JSON.stringify(details));
+    const snapshots = details.before || details.after ? JSON.parse(JSON.stringify({
+      before_json: details.before || null,
+      after_json: details.after || null,
+    })) : null;
     await supabase.from('audit_logs').insert([{
       claim_id: claimId,
-      action,
-      actor: 'Adjuster',
-      actor_type: 'human',
-      details: JSON.parse(JSON.stringify(details)),
+      event_type: eventType,
+      actor_type: 'adjuster',
+      actor_id: 'Adjuster',
+      payload,
+      snapshots,
     }]);
   };
 
@@ -299,10 +305,10 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
       // Log the creation
       await supabase.from('audit_logs').insert([{
         claim_id: newClaim.id,
-        action: 'claim_created',
-        actor: 'System',
-        actor_type: 'human',
-        details: JSON.parse(JSON.stringify({ form_data: data })),
+        event_type: 'claim_created',
+        actor_type: 'claimant',
+        actor_id: 'Claimant',
+        payload: JSON.parse(JSON.stringify({ form_data: data })),
       }]);
 
       setFormData(data);
@@ -343,21 +349,22 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
       // Log intake preference
       await supabase.from('audit_logs').insert([{
         claim_id: claimId,
-        action: humanReviewRequested ? 'human_review_requested' : 'intake_preference_set',
-        actor: 'Claimant',
-        actor_type: 'human',
-        details: JSON.parse(JSON.stringify({ 
+        event_type: humanReviewRequested ? 'human_review_requested' : 'claim_updated',
+        actor_type: 'claimant',
+        actor_id: 'Claimant',
+        payload: { 
           preference: intakePreference, 
           reason: humanReviewReason || null 
-        })),
+        },
       }]);
 
       // Log photo upload
       await supabase.from('audit_logs').insert([{
         claim_id: claimId,
-        action: 'photo_uploaded',
-        actor: 'System',
-        actor_type: 'human',
+        event_type: 'photo_uploaded',
+        actor_type: 'claimant',
+        actor_id: 'Claimant',
+        payload: {},
       }]);
 
       // Call the process-photo edge function
@@ -432,10 +439,13 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
       // Log routing decision with full details
       await supabase.from('audit_logs').insert([{
         claim_id: claimId,
-        action: 'routing_decision',
-        actor: 'System',
+        event_type: 'routing_decision',
         actor_type: 'ai_triage',
-        details: JSON.parse(JSON.stringify({
+        decision: JSON.parse(JSON.stringify({
+          action: routing.recommendation,
+          reasons: routing.reasons,
+        })),
+        payload: JSON.parse(JSON.stringify({
           recommendation: routing.recommendation,
           status: routing.status,
           reasons: routing.reasons,
@@ -510,13 +520,14 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
         adjuster_decision: decision,
       }).eq('id', claimId);
 
-      await supabase.from('audit_logs').insert({
+      await supabase.from('audit_logs').insert([{
         claim_id: claimId,
-        action: `claim_${decision}`,
-        actor: 'Adjuster',
-        actor_type: 'human',
-        details: { decision },
-      });
+        event_type: decision === 'approve' ? 'adjuster_approve' : decision === 'escalate' ? 'adjuster_escalate' : 'adjuster_review',
+        actor_type: 'adjuster',
+        actor_id: 'Adjuster',
+        decision: { action: decision },
+        payload: { decision },
+      }]);
 
       toast.success(`Claim ${decision === 'approve' ? 'approved' : decision === 'escalate' ? 'escalated' : 'marked for review'}`);
       onComplete();

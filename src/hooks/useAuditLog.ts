@@ -121,11 +121,11 @@ export function useAuditLog(claimId: string) {
         model_provider: input.model?.provider || null,
         model_name: input.model?.name || null,
         model_version: input.model?.version || null,
-        inputs_ref: input.inputs_ref || null,
-        metrics: input.metrics || null,
-        decision: input.decision || null,
-        snapshots: input.snapshots || null,
-        payload: input.payload || {},
+        inputs_ref: input.inputs_ref ? JSON.parse(JSON.stringify(input.inputs_ref)) : null,
+        metrics: input.metrics ? JSON.parse(JSON.stringify(input.metrics)) : null,
+        decision: input.decision ? JSON.parse(JSON.stringify(input.decision)) : null,
+        snapshots: input.snapshots ? JSON.parse(JSON.stringify(input.snapshots)) : null,
+        payload: input.payload ? JSON.parse(JSON.stringify(input.payload)) : {},
         prev_event_hash: prevEventHash,
       };
 
@@ -135,10 +135,10 @@ export function useAuditLog(claimId: string) {
 
       const { error: insertError } = await supabase
         .from('audit_logs')
-        .insert({
+        .insert([{
           ...eventRecord,
           event_hash: eventHash,
-        });
+        }]);
 
       if (insertError) throw insertError;
 

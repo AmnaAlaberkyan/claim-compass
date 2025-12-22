@@ -59,10 +59,10 @@ export async function logAuditEvent(input: LogAuditEventInput): Promise<void> {
       model_provider: input.model?.provider || null,
       model_name: input.model?.name || null,
       model_version: input.model?.version || null,
-      metrics: input.metrics || null,
-      decision: input.decision || null,
-      snapshots: input.snapshots || null,
-      payload: input.payload || {},
+      metrics: input.metrics ? JSON.parse(JSON.stringify(input.metrics)) : null,
+      decision: input.decision ? JSON.parse(JSON.stringify(input.decision)) : null,
+      snapshots: input.snapshots ? JSON.parse(JSON.stringify(input.snapshots)) : null,
+      payload: input.payload ? JSON.parse(JSON.stringify(input.payload)) : {},
       prev_event_hash: prevEventHash,
     };
 
@@ -72,10 +72,10 @@ export async function logAuditEvent(input: LogAuditEventInput): Promise<void> {
 
     const { error } = await supabase
       .from('audit_logs')
-      .insert({
+      .insert([{
         ...eventRecord,
         event_hash: eventHash,
-      });
+      }]);
 
     if (error) {
       console.error('Failed to log audit event:', error);
