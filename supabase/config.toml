@@ -1,1 +1,4 @@
 project_id = "xdxspfmvtqyhiedgzkva"
+
+[functions.process-photo]
+verify_jwt = false
