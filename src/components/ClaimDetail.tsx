@@ -612,24 +612,24 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
         )}
 
         {/* Decision Logs: Audit Trail & Replay */}
-        {auditLogs.length > 0 && (
-          <div className="card-apple p-6">
-            <Tabs defaultValue="audit" className="w-full">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-foreground flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  Decision Logs
-                </h2>
-                <TabsList className="grid grid-cols-2 w-auto">
-                  <TabsTrigger value="audit" className="text-xs px-3">Audit Trail</TabsTrigger>
-                  <TabsTrigger value="replay" className="text-xs px-3 gap-1">
-                    <PlayCircle className="w-3 h-3" />
-                    Replay
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-              
-              <TabsContent value="audit">
+        <div className="card-apple p-6">
+          <Tabs defaultValue="audit" className="w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Decision Logs
+              </h2>
+              <TabsList className="grid grid-cols-2 w-auto">
+                <TabsTrigger value="audit" className="text-xs px-3">Audit Trail</TabsTrigger>
+                <TabsTrigger value="replay" className="text-xs px-3 gap-1">
+                  <PlayCircle className="w-3 h-3" />
+                  Replay
+                </TabsTrigger>
+              </TabsList>
+            </div>
+            
+            <TabsContent value="audit">
+              {auditLogs.length > 0 ? (
                 <div className="space-y-3">
                   {auditLogs.map(log => (
                     <div key={log.id} className="flex items-start gap-3 text-sm">
@@ -654,14 +654,19 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
                     </div>
                   ))}
                 </div>
-              </TabsContent>
-              
-              <TabsContent value="replay">
-                <ReplayTimeline logs={auditLogs} />
-              </TabsContent>
-            </Tabs>
-          </div>
-        )}
+              ) : (
+                <div className="text-center py-6 text-muted-foreground">
+                  <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No audit events recorded yet</p>
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="replay">
+              <ReplayTimeline logs={auditLogs} />
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
     </div>
   );
