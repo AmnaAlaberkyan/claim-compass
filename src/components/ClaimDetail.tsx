@@ -10,7 +10,8 @@ import { EstimateCard } from './EstimateCard';
 import { DamageOverlay } from './DamageOverlay';
 import { PartsVerificationTable } from './PartsVerificationTable';
 import { RoutingReasonsCard } from './RoutingReasons';
-import { ArrowLeft, Clock, User, Bot, FileText, Shield, UserCheck, AlertTriangle } from 'lucide-react';
+import { ReplayTimeline } from './ReplayTimeline';
+import { ArrowLeft, Clock, User, Bot, FileText, Shield, UserCheck, AlertTriangle, PlayCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -610,37 +611,55 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
           </>
         )}
 
-        {/* Audit Trail */}
+        {/* Decision Logs: Audit Trail & Replay */}
         {auditLogs.length > 0 && (
           <div className="card-apple p-6">
-            <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              Audit Trail
-            </h2>
-            <div className="space-y-3">
-              {auditLogs.map(log => (
-                <div key={log.id} className="flex items-start gap-3 text-sm">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    log.actor_type === 'human' ? 'bg-primary/10' : 'bg-secondary'
-                  }`}>
-                    {log.actor_type === 'human' 
-                      ? <User className="w-4 h-4 text-primary" />
-                      : <Bot className="w-4 h-4 text-muted-foreground" />
-                    }
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-foreground">
-                      <span className="font-medium">{log.actor}</span>
-                      {' '}{log.action.replace(/_/g, ' ')}
-                    </p>
-                    <p className="text-muted-foreground flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {formatDateTime(log.created_at)}
-                    </p>
-                  </div>
+            <Tabs defaultValue="audit" className="w-full">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-foreground flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Decision Logs
+                </h2>
+                <TabsList className="grid grid-cols-2 w-auto">
+                  <TabsTrigger value="audit" className="text-xs px-3">Audit Trail</TabsTrigger>
+                  <TabsTrigger value="replay" className="text-xs px-3 gap-1">
+                    <PlayCircle className="w-3 h-3" />
+                    Replay
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+              
+              <TabsContent value="audit">
+                <div className="space-y-3">
+                  {auditLogs.map(log => (
+                    <div key={log.id} className="flex items-start gap-3 text-sm">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        log.actor_type === 'human' ? 'bg-primary/10' : 'bg-secondary'
+                      }`}>
+                        {log.actor_type === 'human' 
+                          ? <User className="w-4 h-4 text-primary" />
+                          : <Bot className="w-4 h-4 text-muted-foreground" />
+                        }
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-foreground">
+                          <span className="font-medium">{log.actor}</span>
+                          {' '}{log.action.replace(/_/g, ' ')}
+                        </p>
+                        <p className="text-muted-foreground flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {formatDateTime(log.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </TabsContent>
+              
+              <TabsContent value="replay">
+                <ReplayTimeline logs={auditLogs} />
+              </TabsContent>
+            </Tabs>
           </div>
         )}
       </div>
