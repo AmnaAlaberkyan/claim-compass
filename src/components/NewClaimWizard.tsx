@@ -2,24 +2,20 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ClaimForm } from './ClaimForm';
 import { PhotoUploader } from './PhotoUploader';
-import { AssessmentResults } from './AssessmentResults';
-import { ClaimFormData, QualityResult, DamageAssessment, IntakePreference, DamagedPart } from '@/types/claims';
+import { ClaimFormData, QualityResult, DamageAssessment, IntakePreference } from '@/types/claims';
 import { Estimate } from '@/types/estimates';
-import { Annotations, Detection } from '@/types/annotations';
-import { RoutingReason, RoutingRecommendation } from '@/types/routing';
+import { Annotations } from '@/types/annotations';
+import { RoutingReason, RoutingRecommendation, RoutingStatus } from '@/types/routing';
 import { VerificationState, PartVerification, BoxVerification, ReasonCode } from '@/types/verification';
-import { EstimateCard } from './EstimateCard';
-import { DamageOverlay } from './DamageOverlay';
-import { PartsVerificationTable } from './PartsVerificationTable';
-import { RoutingReasonsCard } from './RoutingReasons';
 import { routeClaim } from '@/lib/routing';
 import { useControls } from '@/hooks/useControls';
-import { ArrowLeft, Check, Bot, UserCheck, HelpCircle, Shield } from 'lucide-react';
+import { ArrowLeft, Check, Bot, UserCheck, HelpCircle, Eye, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ClaimantResultsView, AdjusterResultsView } from './results';
+import { Button } from '@/components/ui/button';
 
 interface NewClaimWizardProps {
   onBack: () => void;
@@ -57,9 +53,10 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
     modifiedBy: 'Adjuster',
   });
   const [highlightedBoxId, setHighlightedBoxId] = useState<string | null>(null);
+  // View mode toggle: claimant vs adjuster
+  const [viewMode, setViewMode] = useState<'claimant' | 'adjuster'>('claimant');
 
   const damagedParts = damageAssessment?.damaged_parts || [];
-  const detections = annotations?.detections || [];
 
   // Part verification handlers
   const logVerificationAction = async (action: string, details: Record<string, unknown>) => {
@@ -577,7 +574,7 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
             className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-4"
           >
             <ArrowLeft className="w-4 h-4" />
-            Cancel
+            Back
           </button>
           
           {/* Progress Steps */}
@@ -704,96 +701,80 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
 
         {step === 'results' && damageAssessment && (
           <div className="animate-fade-in space-y-6">
-            {/* Routing Reasons Card */}
-            {routingResult && routingResult.reasons.length > 0 && (
-              <RoutingReasonsCard 
-                reasons={routingResult.reasons}
-                recommendation={routingResult.recommendation}
-              />
-            )}
-
-            {/* Human Review Requested Banner */}
-            {intakePreference === 'human_requested' && (
-              <div className="card-apple p-4 border-l-4 border-l-warning bg-warning/5">
-                <div className="flex items-start gap-3">
-                  <UserCheck className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-foreground">Your claim is queued for human verification</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      An adjuster will review your assessment within 24-48 hours. We'll notify you when a decision is made.
-                    </p>
-                  </div>
-                </div>
+            {/* View Mode Toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">
+                  {viewMode === 'claimant' ? 'Claim Status' : 'Adjuster Review'}
+                </h1>
+                <p className="text-muted-foreground text-sm mt-1">
+                  {viewMode === 'claimant' 
+                    ? 'Your claim has been submitted and analyzed.'
+                    : 'Review the AI assessment and make a decision.'}
+                </p>
               </div>
-            )}
-
-            <div>
-              <h1 className="text-2xl font-bold text-foreground mb-2">Assessment Results</h1>
-              <p className="text-muted-foreground mb-6">
-                {intakePreference === 'human_requested' 
-                  ? 'AI has analyzed your photos. An adjuster will verify before finalizing.'
-                  : 'Review the AI assessment and make a decision.'}
-              </p>
+              <div className="flex items-center gap-2 bg-muted rounded-lg p-1">
+                <Button
+                  variant={viewMode === 'claimant' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('claimant')}
+                  className="gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  Claimant
+                </Button>
+                <Button
+                  variant={viewMode === 'adjuster' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('adjuster')}
+                  className="gap-2"
+                >
+                  <Briefcase className="w-4 h-4" />
+                  Adjuster
+                </Button>
+              </div>
             </div>
-            <AssessmentResults
-              assessment={damageAssessment}
-              onApprove={() => handleDecision('approve')}
-              onEdit={() => handleDecision('review')}
-              onEscalate={() => handleDecision('escalate')}
-              isLoading={isLoading}
-              hideActions={intakePreference === 'human_requested'}
-            />
-            {/* Human Verification Workspace */}
-            {photoBase64 && damageAssessment && (
-              <div className="card-apple p-6 mt-6">
-                <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-primary" />
-                  Human Verification Workspace
-                </h2>
-                
-                <Tabs defaultValue="parts" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 mb-4">
-                    <TabsTrigger value="parts">Parts Verification</TabsTrigger>
-                    <TabsTrigger value="annotations">Annotation Verification</TabsTrigger>
-                  </TabsList>
-                  
-                  <TabsContent value="parts" className="space-y-4">
-                    <PartsVerificationTable
-                      damagedParts={damagedParts}
-                      detections={detections}
-                      verifications={verificationState.parts}
-                      onVerify={handleVerifyPart}
-                      onReject={handleRejectPart}
-                      onEdit={handleEditPart}
-                      onLinkEvidence={handleLinkEvidence}
-                      onSelectDetection={setHighlightedBoxId}
-                      selectedDetectionId={highlightedBoxId}
-                    />
-                  </TabsContent>
-                  
-                  <TabsContent value="annotations" className="space-y-4">
-                    <DamageOverlay
-                      imageUrl={`data:image/jpeg;base64,${photoBase64}`}
-                      annotations={annotations}
-                      editable={false}
-                      boxVerifications={verificationState.boxes}
-                      onVerifyBox={handleVerifyBox}
-                      onRejectBox={handleRejectBox}
-                      onEditBox={handleEditBox}
-                      onMarkBoxUncertain={handleMarkBoxUncertain}
-                      onLinkBoxToPart={handleLinkBoxToPart}
-                      highlightedBoxId={highlightedBoxId}
-                      partLabels={damagedParts.map(p => p.part)}
-                      showVerificationControls={true}
-                    />
-                  </TabsContent>
-                </Tabs>
-              </div>
-            )}
-            {estimate && (
-              <div className="mt-8">
-                <EstimateCard estimate={estimate} />
-              </div>
+
+            {viewMode === 'claimant' ? (
+              <ClaimantResultsView
+                assessment={damageAssessment}
+                estimate={estimate}
+                routingReasons={routingResult?.reasons}
+                recommendation={routingResult?.recommendation}
+                humanReviewRequested={intakePreference === 'human_requested'}
+                onTrackClaim={onComplete}
+                onUploadMore={() => setStep('photo')}
+                onRequestHumanReview={() => {
+                  setIntakePreference('human_requested');
+                  toast.success('Human review requested');
+                }}
+              />
+            ) : (
+              <AdjusterResultsView
+                assessment={damageAssessment}
+                estimate={estimate}
+                annotations={annotations}
+                photoUrl={photoBase64 ? `data:image/jpeg;base64,${photoBase64}` : undefined}
+                routingReasons={routingResult?.reasons}
+                recommendation={routingResult?.recommendation}
+                humanReviewRequested={intakePreference === 'human_requested'}
+                verificationState={verificationState}
+                highlightedBoxId={highlightedBoxId}
+                isLoading={isLoading}
+                onApprove={() => handleDecision('approve')}
+                onEdit={() => handleDecision('review')}
+                onEscalate={() => handleDecision('escalate')}
+                onVerifyPart={handleVerifyPart}
+                onRejectPart={handleRejectPart}
+                onEditPart={handleEditPart}
+                onLinkEvidence={handleLinkEvidence}
+                onVerifyBox={handleVerifyBox}
+                onRejectBox={handleRejectBox}
+                onEditBox={handleEditBox}
+                onMarkBoxUncertain={handleMarkBoxUncertain}
+                onLinkBoxToPart={handleLinkBoxToPart}
+                onSelectDetection={setHighlightedBoxId}
+              />
             )}
           </div>
         )}
