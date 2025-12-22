@@ -3,20 +3,23 @@ import { supabase } from '@/integrations/supabase/client';
 import { ClaimForm } from './ClaimForm';
 import { PhotoUploader } from './PhotoUploader';
 import { AssessmentResults } from './AssessmentResults';
-import { ClaimFormData, QualityResult, DamageAssessment, IntakePreference } from '@/types/claims';
+import { ClaimFormData, QualityResult, DamageAssessment, IntakePreference, DamagedPart } from '@/types/claims';
 import { Estimate } from '@/types/estimates';
-import { Annotations } from '@/types/annotations';
+import { Annotations, Detection } from '@/types/annotations';
 import { RoutingReason, RoutingRecommendation } from '@/types/routing';
+import { VerificationState, PartVerification, BoxVerification, ReasonCode } from '@/types/verification';
 import { EstimateCard } from './EstimateCard';
 import { DamageOverlay } from './DamageOverlay';
+import { PartsVerificationTable } from './PartsVerificationTable';
 import { RoutingReasonsCard } from './RoutingReasons';
 import { routeClaim } from '@/lib/routing';
 import { useControls } from '@/hooks/useControls';
-import { ArrowLeft, Check, Bot, UserCheck, HelpCircle } from 'lucide-react';
+import { ArrowLeft, Check, Bot, UserCheck, HelpCircle, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface NewClaimWizardProps {
   onBack: () => void;
@@ -46,6 +49,234 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
   const [humanReviewReason, setHumanReviewReason] = useState('');
   // Get routing controls
   const { controls } = useControls();
+  // Verification state
+  const [verificationState, setVerificationState] = useState<VerificationState>({
+    parts: [],
+    boxes: [],
+    lastModified: new Date().toISOString(),
+    modifiedBy: 'Adjuster',
+  });
+  const [highlightedBoxId, setHighlightedBoxId] = useState<string | null>(null);
+
+  const damagedParts = damageAssessment?.damaged_parts || [];
+  const detections = annotations?.detections || [];
+
+  // Part verification handlers
+  const logVerificationAction = async (action: string, details: Record<string, unknown>) => {
+    if (!claimId) return;
+    await supabase.from('audit_logs').insert([{
+      claim_id: claimId,
+      action,
+      actor: 'Adjuster',
+      actor_type: 'human',
+      details: JSON.parse(JSON.stringify(details)),
+    }]);
+  };
+
+  const handleVerifyPart = (partIndex: number) => {
+    const before = verificationState.parts.find(p => p.partIndex === partIndex);
+    const after: PartVerification = {
+      partIndex,
+      status: 'verified',
+      linkedBoxIds: before?.linkedBoxIds || [],
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: 'Adjuster',
+    };
+
+    setVerificationState(prev => ({
+      ...prev,
+      parts: [...prev.parts.filter(p => p.partIndex !== partIndex), after],
+      lastModified: new Date().toISOString(),
+    }));
+
+    logVerificationAction('part_verified', {
+      partIndex,
+      partName: damagedParts[partIndex]?.part,
+      before,
+      after,
+    });
+    toast.success(`Part "${damagedParts[partIndex]?.part}" verified`);
+  };
+
+  const handleRejectPart = (partIndex: number, reasonCode: ReasonCode, notes?: string) => {
+    const before = verificationState.parts.find(p => p.partIndex === partIndex);
+    const after: PartVerification = {
+      partIndex,
+      status: 'rejected',
+      reasonCode,
+      notes,
+      linkedBoxIds: before?.linkedBoxIds || [],
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: 'Adjuster',
+    };
+
+    setVerificationState(prev => ({
+      ...prev,
+      parts: [...prev.parts.filter(p => p.partIndex !== partIndex), after],
+      lastModified: new Date().toISOString(),
+    }));
+
+    logVerificationAction('part_rejected', {
+      partIndex,
+      partName: damagedParts[partIndex]?.part,
+      reasonCode,
+      notes,
+      before,
+      after,
+    });
+    toast.success(`Part "${damagedParts[partIndex]?.part}" rejected`);
+  };
+
+  const handleEditPart = (partIndex: number, edits: PartVerification['editedValues'], reasonCode: ReasonCode) => {
+    const before = verificationState.parts.find(p => p.partIndex === partIndex);
+    const after: PartVerification = {
+      partIndex,
+      status: 'verified',
+      reasonCode,
+      editedValues: edits,
+      linkedBoxIds: before?.linkedBoxIds || [],
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: 'Adjuster',
+    };
+
+    setVerificationState(prev => ({
+      ...prev,
+      parts: [...prev.parts.filter(p => p.partIndex !== partIndex), after],
+      lastModified: new Date().toISOString(),
+    }));
+
+    logVerificationAction('part_edited', {
+      partIndex,
+      partName: damagedParts[partIndex]?.part,
+      edits,
+      reasonCode,
+      before,
+      after,
+    });
+    toast.success(`Part "${damagedParts[partIndex]?.part}" edited and verified`);
+  };
+
+  const handleLinkEvidence = (partIndex: number, detectionIds: string[]) => {
+    const existing = verificationState.parts.find(p => p.partIndex === partIndex);
+    const updated: PartVerification = {
+      ...(existing || { partIndex, status: 'proposed' as const, linkedBoxIds: [] }),
+      linkedBoxIds: detectionIds,
+    };
+
+    setVerificationState(prev => ({
+      ...prev,
+      parts: [...prev.parts.filter(p => p.partIndex !== partIndex), updated],
+      lastModified: new Date().toISOString(),
+    }));
+
+    logVerificationAction('evidence_linked', {
+      partIndex,
+      partName: damagedParts[partIndex]?.part,
+      detectionIds,
+    });
+  };
+
+  // Box verification handlers
+  const handleVerifyBox = (detectionId: string) => {
+    const before = verificationState.boxes.find(b => b.detectionId === detectionId);
+    const after: BoxVerification = {
+      detectionId,
+      status: 'verified',
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: 'Adjuster',
+    };
+
+    setVerificationState(prev => ({
+      ...prev,
+      boxes: [...prev.boxes.filter(b => b.detectionId !== detectionId), after],
+      lastModified: new Date().toISOString(),
+    }));
+
+    logVerificationAction('box_verified', { detectionId, before, after });
+    toast.success('Detection verified');
+  };
+
+  const handleRejectBox = (detectionId: string, reasonCode: ReasonCode, notes?: string) => {
+    const before = verificationState.boxes.find(b => b.detectionId === detectionId);
+    const after: BoxVerification = {
+      detectionId,
+      status: 'rejected',
+      reasonCode,
+      notes,
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: 'Adjuster',
+    };
+
+    setVerificationState(prev => ({
+      ...prev,
+      boxes: [...prev.boxes.filter(b => b.detectionId !== detectionId), after],
+      lastModified: new Date().toISOString(),
+    }));
+
+    logVerificationAction('box_rejected', { detectionId, reasonCode, notes, before, after });
+    toast.success('Detection rejected');
+  };
+
+  const handleEditBox = (detectionId: string, edits: BoxVerification['editedValues'], reasonCode: ReasonCode) => {
+    const before = verificationState.boxes.find(b => b.detectionId === detectionId);
+    const after: BoxVerification = {
+      detectionId,
+      status: 'verified',
+      editedValues: edits,
+      reasonCode,
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: 'Adjuster',
+    };
+
+    setVerificationState(prev => ({
+      ...prev,
+      boxes: [...prev.boxes.filter(b => b.detectionId !== detectionId), after],
+      lastModified: new Date().toISOString(),
+    }));
+
+    logVerificationAction('box_edited', { detectionId, edits, reasonCode, before, after });
+    toast.success('Detection edited');
+  };
+
+  const handleMarkBoxUncertain = (detectionId: string) => {
+    const before = verificationState.boxes.find(b => b.detectionId === detectionId);
+    const after: BoxVerification = {
+      detectionId,
+      status: 'needs_review',
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: 'Adjuster',
+    };
+
+    setVerificationState(prev => ({
+      ...prev,
+      boxes: [...prev.boxes.filter(b => b.detectionId !== detectionId), after],
+      lastModified: new Date().toISOString(),
+    }));
+
+    logVerificationAction('box_marked_uncertain', { detectionId, before, after });
+    toast.success('Detection marked for 2nd review');
+  };
+
+  const handleLinkBoxToPart = (detectionId: string, partIndex: number | null) => {
+    const existing = verificationState.boxes.find(b => b.detectionId === detectionId);
+    const updated: BoxVerification = {
+      ...(existing || { detectionId, status: 'proposed' as const }),
+      linkedPartIndex: partIndex ?? undefined,
+    };
+
+    setVerificationState(prev => ({
+      ...prev,
+      boxes: [...prev.boxes.filter(b => b.detectionId !== detectionId), updated],
+      lastModified: new Date().toISOString(),
+    }));
+
+    if (partIndex !== null) {
+      handleLinkEvidence(partIndex, [
+        ...(verificationState.parts.find(p => p.partIndex === partIndex)?.linkedBoxIds || []),
+        detectionId,
+      ]);
+    }
+  };
 
   const handleFormSubmit = async (data: ClaimFormData) => {
     setIsLoading(true);
@@ -379,7 +610,7 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
       </header>
 
       {/* Content */}
-      <div className="max-w-lg mx-auto px-6 py-8">
+      <div className={`mx-auto px-6 py-8 ${step === 'results' ? 'max-w-4xl' : 'max-w-lg'}`}>
         {step === 'form' && (
           <div className="animate-fade-in">
             <h1 className="text-2xl font-bold text-foreground mb-2">New Claim</h1>
@@ -512,14 +743,51 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
               isLoading={isLoading}
               hideActions={intakePreference === 'human_requested'}
             />
-            {photoBase64 && annotations && (
-              <div className="mt-8">
-                <h3 className="font-semibold text-foreground mb-3">Damage Localization</h3>
-                <DamageOverlay
-                  imageUrl={`data:image/jpeg;base64,${photoBase64}`}
-                  annotations={annotations}
-                  editable={false}
-                />
+            {/* Human Verification Workspace */}
+            {photoBase64 && damageAssessment && (
+              <div className="card-apple p-6 mt-6">
+                <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-primary" />
+                  Human Verification Workspace
+                </h2>
+                
+                <Tabs defaultValue="parts" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2 mb-4">
+                    <TabsTrigger value="parts">Parts Verification</TabsTrigger>
+                    <TabsTrigger value="annotations">Annotation Verification</TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="parts" className="space-y-4">
+                    <PartsVerificationTable
+                      damagedParts={damagedParts}
+                      detections={detections}
+                      verifications={verificationState.parts}
+                      onVerify={handleVerifyPart}
+                      onReject={handleRejectPart}
+                      onEdit={handleEditPart}
+                      onLinkEvidence={handleLinkEvidence}
+                      onSelectDetection={setHighlightedBoxId}
+                      selectedDetectionId={highlightedBoxId}
+                    />
+                  </TabsContent>
+                  
+                  <TabsContent value="annotations" className="space-y-4">
+                    <DamageOverlay
+                      imageUrl={`data:image/jpeg;base64,${photoBase64}`}
+                      annotations={annotations}
+                      editable={false}
+                      boxVerifications={verificationState.boxes}
+                      onVerifyBox={handleVerifyBox}
+                      onRejectBox={handleRejectBox}
+                      onEditBox={handleEditBox}
+                      onMarkBoxUncertain={handleMarkBoxUncertain}
+                      onLinkBoxToPart={handleLinkBoxToPart}
+                      highlightedBoxId={highlightedBoxId}
+                      partLabels={damagedParts.map(p => p.part)}
+                      showVerificationControls={true}
+                    />
+                  </TabsContent>
+                </Tabs>
               </div>
             )}
             {estimate && (
