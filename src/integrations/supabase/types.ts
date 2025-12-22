@@ -66,9 +66,12 @@ export type Database = {
           created_at: string
           damage_assessment: Json | null
           fraud_indicators: string[] | null
+          human_review_reason: string | null
+          human_review_requested: boolean
           id: string
           incident_date: string
           incident_description: string
+          intake_preference: string
           photo_url: string | null
           policy_number: string
           quality_issues: Json | null
@@ -94,9 +97,12 @@ export type Database = {
           created_at?: string
           damage_assessment?: Json | null
           fraud_indicators?: string[] | null
+          human_review_reason?: string | null
+          human_review_requested?: boolean
           id?: string
           incident_date: string
           incident_description: string
+          intake_preference?: string
           photo_url?: string | null
           policy_number: string
           quality_issues?: Json | null
@@ -122,9 +128,12 @@ export type Database = {
           created_at?: string
           damage_assessment?: Json | null
           fraud_indicators?: string[] | null
+          human_review_reason?: string | null
+          human_review_requested?: boolean
           id?: string
           incident_date?: string
           incident_description?: string
+          intake_preference?: string
           photo_url?: string | null
           policy_number?: string
           quality_issues?: Json | null

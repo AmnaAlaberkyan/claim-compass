@@ -8,7 +8,7 @@ import { AssessmentResults } from './AssessmentResults';
 import { EstimateCard } from './EstimateCard';
 import { DamageOverlay } from './DamageOverlay';
 import { PartsVerificationTable } from './PartsVerificationTable';
-import { ArrowLeft, Clock, User, Bot, FileText, Shield } from 'lucide-react';
+import { ArrowLeft, Clock, User, Bot, FileText, Shield, UserCheck, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -317,7 +317,20 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
     }
   };
 
+  // Check if verification is sufficient for human-requested claims
+  const hasVerifiedParts = verificationState.parts.some(p => p.status === 'verified');
+  const hasRejectedAllParts = damagedParts.length > 0 && 
+    verificationState.parts.filter(p => p.status === 'rejected').length === damagedParts.length;
+  const verificationComplete = hasVerifiedParts || hasRejectedAllParts;
+  const requiresVerification = claim.human_review_requested && !verificationComplete;
+
   const handleDecision = async (decision: 'approve' | 'review' | 'escalate') => {
+    // Block approval if human review was requested and no verification done
+    if (decision === 'approve' && claim.human_review_requested && !verificationComplete) {
+      toast.error('Please verify at least one part or reject all parts before approving a human-requested claim.');
+      return;
+    }
+
     setIsLoading(true);
     
     const statusMap = {
@@ -342,7 +355,12 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
         action: `claim_${decision}`,
         actor: 'Adjuster',
         actor_type: 'human',
-        details: JSON.parse(JSON.stringify({ decision, verificationState })),
+        details: JSON.parse(JSON.stringify({ 
+          decision, 
+          verificationState,
+          human_review_requested: claim.human_review_requested,
+          verification_complete: verificationComplete,
+        })),
       }]);
 
       toast.success(`Claim ${decision === 'approve' ? 'approved' : decision === 'escalate' ? 'escalated' : 'marked for review'}`);
@@ -473,6 +491,29 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
             <p className="text-foreground">{claim.incident_description}</p>
           </div>
         </div>
+
+        {/* Human Review Requested Banner */}
+        {claim.human_review_requested && (
+          <div className="card-apple p-4 border-l-4 border-l-warning bg-warning/5">
+            <div className="flex items-start gap-3">
+              <UserCheck className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold text-foreground">Claimant Requested Human Review</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {claim.human_review_reason 
+                    ? `Reason: "${claim.human_review_reason}"`
+                    : 'The claimant requested human verification before any decision is made.'}
+                </p>
+                {requiresVerification && (
+                  <div className="flex items-center gap-2 mt-2 text-sm text-warning">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span>You must verify at least one part before approving this claim.</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Human Verification Workspace */}
         {claim.photo_url && claim.damage_assessment && (

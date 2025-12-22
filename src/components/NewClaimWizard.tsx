@@ -3,13 +3,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { ClaimForm } from './ClaimForm';
 import { PhotoUploader } from './PhotoUploader';
 import { AssessmentResults } from './AssessmentResults';
-import { ClaimFormData, QualityResult, DamageAssessment } from '@/types/claims';
+import { ClaimFormData, QualityResult, DamageAssessment, IntakePreference } from '@/types/claims';
 import { Estimate } from '@/types/estimates';
 import { Annotations } from '@/types/annotations';
 import { EstimateCard } from './EstimateCard';
 import { DamageOverlay } from './DamageOverlay';
-import { ArrowLeft, Check } from 'lucide-react';
+import { ArrowLeft, Check, Bot, UserCheck, HelpCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 interface NewClaimWizardProps {
   onBack: () => void;
@@ -30,6 +33,9 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [currentClaim, setCurrentClaim] = useState<ClaimFormData | null>(null);
+  // Human review preference state
+  const [intakePreference, setIntakePreference] = useState<IntakePreference>('ai_first');
+  const [humanReviewReason, setHumanReviewReason] = useState('');
 
   const handleFormSubmit = async (data: ClaimFormData) => {
     setIsLoading(true);
@@ -85,17 +91,36 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
     if (!claimId) return;
     
     setIsAnalyzing(true);
+    const humanReviewRequested = intakePreference === 'human_requested';
+
     try {
-      // Update claim status to processing
-      await supabase.from('claims').update({ status: 'processing' }).eq('id', claimId);
+      // Update claim with intake preference and set status to processing
+      await supabase.from('claims').update({ 
+        status: 'processing',
+        human_review_requested: humanReviewRequested,
+        human_review_reason: humanReviewRequested ? humanReviewReason || null : null,
+        intake_preference: intakePreference,
+      }).eq('id', claimId);
+
+      // Log intake preference
+      await supabase.from('audit_logs').insert([{
+        claim_id: claimId,
+        action: humanReviewRequested ? 'human_review_requested' : 'intake_preference_set',
+        actor: 'Claimant',
+        actor_type: 'human',
+        details: JSON.parse(JSON.stringify({ 
+          preference: intakePreference, 
+          reason: humanReviewReason || null 
+        })),
+      }]);
 
       // Log photo upload
-      await supabase.from('audit_logs').insert({
+      await supabase.from('audit_logs').insert([{
         claim_id: claimId,
         action: 'photo_uploaded',
         actor: 'System',
         actor_type: 'human',
-      });
+      }]);
 
       // Call the process-photo edge function
       const response = await fetch(
@@ -169,9 +194,31 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
         },
       });
 
+      // Determine the routing based on human review request
+      let finalStatus: 'review' | 'escalated';
+      if (humanReviewRequested) {
+        // Always route to review queue when human review is requested
+        finalStatus = 'review';
+        // Log routing decision
+        await supabase.from('audit_logs').insert([{
+          claim_id: claimId,
+          action: 'routed_to_human_due_to_request',
+          actor: 'System',
+          actor_type: 'ai_triage',
+          details: JSON.parse(JSON.stringify({
+            reason: 'claimant_requested_human_review',
+            ai_recommendation: result.recommended_action,
+            intake_preference: intakePreference,
+          })),
+        }]);
+      } else {
+        // Normal AI routing logic
+        finalStatus = result.recommended_action === 'escalate' ? 'escalated' : 'review';
+      }
+
       // Update claim with assessment data
       await supabase.from('claims').update({
-        status: result.recommended_action === 'escalate' ? 'escalated' : 'review',
+        status: finalStatus,
         quality_score: result.quality_result.score,
         quality_issues: result.quality_result.issues,
         damage_assessment: result.damage_result,
@@ -194,7 +241,12 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
         setAnnotations(result.annotations);
       }
       setStep('results');
-      toast.success('Analysis complete!');
+      
+      if (humanReviewRequested) {
+        toast.success('Analysis complete! Your claim is queued for human verification.');
+      } else {
+        toast.success('Analysis complete!');
+      }
     } catch (error) {
       console.error('Error analyzing photo:', error);
       toast.error('Failed to analyze photo. Please try again.');
@@ -303,11 +355,79 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
         )}
 
         {step === 'photo' && (
-          <div className="animate-fade-in">
-            <h1 className="text-2xl font-bold text-foreground mb-2">Upload Photo</h1>
-            <p className="text-muted-foreground mb-6">
-              Take a clear photo of the vehicle damage.
-            </p>
+          <div className="animate-fade-in space-y-6">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground mb-2">Upload Photo</h1>
+              <p className="text-muted-foreground mb-6">
+                Take a clear photo of the vehicle damage.
+              </p>
+            </div>
+
+            {/* Review Preference Selection */}
+            <div className="card-apple p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <HelpCircle className="w-4 h-4 text-muted-foreground" />
+                <span className="font-medium text-foreground text-sm">How would you like your claim reviewed?</span>
+              </div>
+              
+              <RadioGroup 
+                value={intakePreference} 
+                onValueChange={(v) => setIntakePreference(v as IntakePreference)}
+                className="space-y-3"
+              >
+                <div className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${
+                  intakePreference === 'ai_first' 
+                    ? 'border-primary bg-primary/5' 
+                    : 'border-border hover:border-muted-foreground/30'
+                }`}>
+                  <RadioGroupItem value="ai_first" id="ai_first" className="mt-0.5" />
+                  <div className="flex-1">
+                    <Label htmlFor="ai_first" className="flex items-center gap-2 cursor-pointer">
+                      <Bot className="w-4 h-4 text-primary" />
+                      <span className="font-medium">AI review first (fastest)</span>
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      We'll analyze your photos instantly and route to an adjuster if needed.
+                    </p>
+                  </div>
+                </div>
+
+                <div className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${
+                  intakePreference === 'human_requested' 
+                    ? 'border-warning bg-warning/5' 
+                    : 'border-border hover:border-muted-foreground/30'
+                }`}>
+                  <RadioGroupItem value="human_requested" id="human_requested" className="mt-0.5" />
+                  <div className="flex-1">
+                    <Label htmlFor="human_requested" className="flex items-center gap-2 cursor-pointer">
+                      <UserCheck className="w-4 h-4 text-warning" />
+                      <span className="font-medium">Request human review</span>
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      An adjuster will verify the assessment before any decision.
+                    </p>
+                  </div>
+                </div>
+              </RadioGroup>
+
+              {/* Optional reason field when human review is requested */}
+              {intakePreference === 'human_requested' && (
+                <div className="space-y-2 pt-2">
+                  <Label htmlFor="reason" className="text-sm text-muted-foreground">
+                    Reason for human review (optional)
+                  </Label>
+                  <Textarea
+                    id="reason"
+                    placeholder="e.g., Complex damage, pre-existing conditions, or any concerns..."
+                    value={humanReviewReason}
+                    onChange={(e) => setHumanReviewReason(e.target.value)}
+                    className="resize-none"
+                    rows={2}
+                  />
+                </div>
+              )}
+            </div>
+
             <PhotoUploader
               onPhotoSelected={handlePhotoSelected}
               qualityResult={qualityResult}
@@ -319,10 +439,27 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
 
         {step === 'results' && damageAssessment && (
           <div className="animate-fade-in space-y-6">
+            {/* Human Review Requested Banner */}
+            {intakePreference === 'human_requested' && (
+              <div className="card-apple p-4 border-l-4 border-l-warning bg-warning/5">
+                <div className="flex items-start gap-3">
+                  <UserCheck className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-foreground">Your claim is queued for human verification</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      An adjuster will review your assessment within 24-48 hours. We'll notify you when a decision is made.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div>
               <h1 className="text-2xl font-bold text-foreground mb-2">Assessment Results</h1>
               <p className="text-muted-foreground mb-6">
-                Review the AI assessment and make a decision.
+                {intakePreference === 'human_requested' 
+                  ? 'AI has analyzed your photos. An adjuster will verify before finalizing.'
+                  : 'Review the AI assessment and make a decision.'}
               </p>
             </div>
             <AssessmentResults
@@ -331,6 +468,7 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
               onEdit={() => handleDecision('review')}
               onEscalate={() => handleDecision('escalate')}
               isLoading={isLoading}
+              hideActions={intakePreference === 'human_requested'}
             />
             {photoBase64 && annotations && (
               <div className="mt-8">

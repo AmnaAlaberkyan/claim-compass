@@ -1,5 +1,5 @@
 import { Claim } from '@/types/claims';
-import { Clock, CheckCircle, AlertTriangle, XCircle, FileSearch } from 'lucide-react';
+import { Clock, CheckCircle, AlertTriangle, XCircle, FileSearch, UserCheck } from 'lucide-react';
 
 interface ClaimCardProps {
   claim: Claim;
@@ -62,7 +62,15 @@ export function ClaimCard({ claim, onClick }: ClaimCardProps) {
     >
       <div className="flex items-start justify-between mb-3">
         <div>
-          <h3 className="font-semibold text-foreground">{claim.policy_number}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-foreground">{claim.policy_number}</h3>
+            {claim.human_review_requested && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-warning/20 text-warning">
+                <UserCheck className="w-3 h-3" />
+                Human Review
+              </span>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">{claim.claimant_name}</p>
         </div>
         <span className={`status-badge flex items-center gap-1 ${getStatusClass(claim.status)}`}>
