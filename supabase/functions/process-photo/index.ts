@@ -518,6 +518,28 @@ Output ONLY valid JSON through the function call.`
   }
 }
 
+// Helper to log audit events
+async function logAuditEvent(
+  supabase: any, 
+  claimId: string, 
+  action: string, 
+  actor: string, 
+  actorType: string, 
+  details?: Record<string, any>
+) {
+  try {
+    await supabase.from('audit_logs').insert({
+      claim_id: claimId,
+      action,
+      actor,
+      actor_type: actorType,
+      details: details || null,
+    });
+  } catch (e) {
+    console.error(`Failed to log audit event ${action}:`, e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -540,11 +562,32 @@ serve(async (req) => {
 
     // Step 1: Quality Assessment
     console.log("Step 1: Quality Assessment");
+    const qualityStartTime = Date.now();
     const qualityResult = await runQualityAgent(image_base64, LOVABLE_API_KEY);
+    const qualityDuration = Date.now() - qualityStartTime;
     console.log("Quality result:", JSON.stringify(qualityResult));
+
+    // Log quality assessment
+    await logAuditEvent(supabase, claim_id, 'quality_assessment_completed', 'Quality Agent', 'ai_quality', {
+      model_version: 'gemini-2.5-flash',
+      duration_ms: qualityDuration,
+      score: qualityResult.score,
+      acceptable: qualityResult.acceptable,
+      issues_count: qualityResult.issues?.length || 0,
+      issues: qualityResult.issues,
+    });
 
     if (!qualityResult.acceptable) {
       console.log("Photo quality failed, requesting retake");
+      
+      // Log retake request
+      await logAuditEvent(supabase, claim_id, 'retake_requested', 'Quality Agent', 'ai_quality', {
+        reason: 'quality_failed',
+        score: qualityResult.score,
+        issues: qualityResult.issues,
+        guidance: qualityResult.guidance,
+      });
+
       return new Response(JSON.stringify({
         success: false,
         stage: "quality",
@@ -557,8 +600,23 @@ serve(async (req) => {
 
     // Step 2: Damage Assessment (only if quality passed)
     console.log("Step 2: Damage Assessment");
+    const damageStartTime = Date.now();
     const damageResult = await runDamageAgent(image_base64, LOVABLE_API_KEY);
+    const damageDuration = Date.now() - damageStartTime;
     console.log("Damage result:", JSON.stringify(damageResult));
+
+    // Log damage assessment
+    await logAuditEvent(supabase, claim_id, 'damage_assessment_completed', 'Damage Agent', 'ai_damage', {
+      model_version: 'gemini-2.5-pro',
+      duration_ms: damageDuration,
+      parts_detected: damageResult.damaged_parts?.length || 0,
+      overall_severity: damageResult.overall_severity,
+      overall_confidence: damageResult.overall_confidence,
+      cost_range: { low: damageResult.total_cost_low, high: damageResult.total_cost_high },
+      safety_concerns: damageResult.safety_concerns,
+      fraud_indicators: damageResult.fraud_indicators,
+      ai_recommendation: damageResult.recommended_action,
+    });
 
     // Step 3: Generate Estimate with Citations
     console.log("Step 3: Building Estimate with Citations");
@@ -582,11 +640,21 @@ serve(async (req) => {
       console.error("Failed to store estimate:", estimateError);
     } else {
       console.log("Estimate stored successfully");
+      
+      // Log estimate creation
+      await logAuditEvent(supabase, claim_id, 'estimate_created', 'System', 'system', {
+        line_items_count: estimate.lineItems?.length || 0,
+        labor_total: estimate.laborTotal,
+        parts_range: { low: estimate.partsLow, high: estimate.partsHigh },
+        grand_total_range: { low: estimate.grandTotalLow, high: estimate.grandTotalHigh },
+      });
     }
 
     // Step 4: Damage Localization (bounding boxes)
     console.log("Step 4: Damage Localization");
+    const localizationStartTime = Date.now();
     let annotations: Annotations;
+    let localizationMethod = 'ai';
     
     try {
       annotations = await runLocalizationAgent(image_base64, LOVABLE_API_KEY);
@@ -594,7 +662,24 @@ serve(async (req) => {
     } catch (locError) {
       console.log("AI localization failed, using simulated detections");
       annotations = generateSimulatedDetections(claim_id, damageResult.summary || '');
+      localizationMethod = 'simulated';
     }
+    const localizationDuration = Date.now() - localizationStartTime;
+
+    // Log localization
+    await logAuditEvent(supabase, claim_id, 'localization_completed', 'Localization Agent', 'ai_damage', {
+      model_version: localizationMethod === 'ai' ? 'gemini-2.5-flash' : 'simulated',
+      method: localizationMethod,
+      duration_ms: localizationDuration,
+      detections_count: annotations.detections?.length || 0,
+      detections: annotations.detections?.map(d => ({
+        id: d.id,
+        label: d.label,
+        part: d.part,
+        severity: d.severity,
+        confidence: d.confidence,
+      })),
+    });
 
     // Update claim with annotations
     const { error: annotationError } = await supabase
@@ -611,20 +696,37 @@ serve(async (req) => {
     // Step 5: Triage logic
     console.log("Step 5: Triage");
     let finalAction = damageResult.recommended_action;
+    const triageReasons: string[] = [];
     
     // Override logic per PRD
     if (damageResult.overall_confidence < 70) {
       finalAction = "escalate";
+      triageReasons.push("confidence < 70%");
       console.log("Escalating: confidence < 70%");
     }
     if (damageResult.overall_severity > 7) {
       finalAction = "escalate";
+      triageReasons.push("severity > 7");
       console.log("Escalating: severity > 7");
     }
     if (damageResult.fraud_indicators && damageResult.fraud_indicators.length > 0) {
       finalAction = "escalate";
+      triageReasons.push("fraud indicators found");
       console.log("Escalating: fraud indicators found");
     }
+
+    // Log triage decision
+    await logAuditEvent(supabase, claim_id, 'triage_decision', 'Triage Agent', 'ai_triage', {
+      ai_recommendation: damageResult.recommended_action,
+      final_action: finalAction,
+      override_reasons: triageReasons.length > 0 ? triageReasons : null,
+      inputs: {
+        severity: damageResult.overall_severity,
+        confidence: damageResult.overall_confidence,
+        fraud_indicators_count: damageResult.fraud_indicators?.length || 0,
+        safety_concerns_count: damageResult.safety_concerns?.length || 0,
+      },
+    });
 
     return new Response(JSON.stringify({
       success: true,

@@ -73,7 +73,7 @@ export interface AuditLog {
   claim_id: string;
   action: string;
   actor: string;
-  actor_type: 'ai_quality' | 'ai_damage' | 'ai_triage' | 'human';
+  actor_type: 'ai_quality' | 'ai_damage' | 'ai_triage' | 'human' | 'system';
   details?: Record<string, any>;
   created_at: string;
 }

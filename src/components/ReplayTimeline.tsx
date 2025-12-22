@@ -9,28 +9,48 @@ interface ReplayTimelineProps {
 
 // Event type display configuration
 const EVENT_CONFIG: Record<string, { label: string; color: string }> = {
-  ai_assessment_complete: { label: 'AI Assessment Complete', color: 'bg-primary/10 text-primary' },
-  damage_assessment_completed: { label: 'Damage Assessment Complete', color: 'bg-primary/10 text-primary' },
+  // Intake events
+  claim_created: { label: 'Claim Created', color: 'bg-muted text-muted-foreground' },
+  intake_preference_set: { label: 'Intake Preference Set', color: 'bg-secondary text-secondary-foreground' },
+  human_review_requested: { label: 'Human Review Requested', color: 'bg-warning/10 text-warning' },
+  photo_uploaded: { label: 'Photo Uploaded', color: 'bg-secondary text-secondary-foreground' },
+  
+  // AI Processing events
+  quality_assessment_completed: { label: 'Quality Assessment', color: 'bg-primary/10 text-primary' },
+  damage_assessment_completed: { label: 'Damage Assessment', color: 'bg-primary/10 text-primary' },
+  localization_completed: { label: 'Damage Localization', color: 'bg-primary/10 text-primary' },
+  estimate_created: { label: 'Estimate Created', color: 'bg-primary/10 text-primary' },
+  triage_decision: { label: 'Triage Decision', color: 'bg-accent/10 text-accent-foreground' },
+  retake_requested: { label: 'Retake Requested', color: 'bg-warning/10 text-warning' },
+  
+  // Routing events
   routing_decision: { label: 'Routing Decision', color: 'bg-accent/10 text-accent-foreground' },
+  
+  // Verification events
+  part_verified: { label: 'Part Verified', color: 'bg-success/10 text-success' },
+  part_rejected: { label: 'Part Rejected', color: 'bg-destructive/10 text-destructive' },
+  part_edited: { label: 'Part Edited', color: 'bg-warning/10 text-warning' },
+  evidence_linked: { label: 'Evidence Linked', color: 'bg-secondary text-secondary-foreground' },
+  box_verified: { label: 'Box Verified', color: 'bg-success/10 text-success' },
+  box_rejected: { label: 'Box Rejected', color: 'bg-destructive/10 text-destructive' },
+  box_edited: { label: 'Box Edited', color: 'bg-warning/10 text-warning' },
+  box_marked_uncertain: { label: 'Box Marked Uncertain', color: 'bg-warning/10 text-warning' },
+  
+  // Decision events
   claim_approved: { label: 'Claim Approved', color: 'bg-success/10 text-success' },
   claim_approve: { label: 'Claim Approved', color: 'bg-success/10 text-success' },
   claim_review: { label: 'Marked for Review', color: 'bg-warning/10 text-warning' },
   claim_escalated: { label: 'Claim Escalated', color: 'bg-destructive/10 text-destructive' },
   claim_escalate: { label: 'Claim Escalated', color: 'bg-destructive/10 text-destructive' },
-  verification_updated: { label: 'Verification Updated', color: 'bg-secondary text-secondary-foreground' },
-  part_verified: { label: 'Part Verified', color: 'bg-success/10 text-success' },
-  part_rejected: { label: 'Part Rejected', color: 'bg-destructive/10 text-destructive' },
-  part_edited: { label: 'Part Edited', color: 'bg-warning/10 text-warning' },
-  box_verified: { label: 'Box Verified', color: 'bg-success/10 text-success' },
-  box_rejected: { label: 'Box Rejected', color: 'bg-destructive/10 text-destructive' },
-  box_edited: { label: 'Box Edited', color: 'bg-warning/10 text-warning' },
-  estimate_created: { label: 'Estimate Created', color: 'bg-primary/10 text-primary' },
-  estimate_updated: { label: 'Estimate Updated', color: 'bg-warning/10 text-warning' },
+  
+  // QA events
   qa_sampled: { label: 'QA Sampled', color: 'bg-accent/10 text-accent-foreground' },
   qa_completed: { label: 'QA Completed', color: 'bg-success/10 text-success' },
-  claim_created: { label: 'Claim Created', color: 'bg-muted text-muted-foreground' },
-  photo_uploaded: { label: 'Photo Uploaded', color: 'bg-secondary text-secondary-foreground' },
-  quality_assessment_completed: { label: 'Quality Assessment', color: 'bg-primary/10 text-primary' },
+  
+  // Legacy/misc
+  ai_assessment_complete: { label: 'AI Assessment Complete', color: 'bg-primary/10 text-primary' },
+  verification_updated: { label: 'Verification Updated', color: 'bg-secondary text-secondary-foreground' },
+  estimate_updated: { label: 'Estimate Updated', color: 'bg-warning/10 text-warning' },
   manager_action: { label: 'Manager Action', color: 'bg-accent/10 text-accent-foreground' },
   controls_updated: { label: 'Controls Updated', color: 'bg-warning/10 text-warning' },
 };

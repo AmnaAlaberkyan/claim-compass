@@ -393,14 +393,8 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
         throw new Error(result.error || 'Analysis failed');
       }
 
-      // Log quality assessment
-      await supabase.from('audit_logs').insert({
-        claim_id: claimId,
-        action: 'quality_assessment_completed',
-        actor: 'Quality Agent',
-        actor_type: 'ai_quality',
-        details: result.quality_result,
-      });
+      // Note: Audit events for quality, damage, localization, estimate, and triage 
+      // are now logged directly in the edge function for better accuracy
 
       setQualityResult(result.quality_result);
 
@@ -409,28 +403,6 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
         toast.error('Photo quality check failed. Please retake.');
         return;
       }
-
-      // Quality passed, log damage assessment
-      await supabase.from('audit_logs').insert({
-        claim_id: claimId,
-        action: 'damage_assessment_completed',
-        actor: 'Damage Agent',
-        actor_type: 'ai_damage',
-        details: result.damage_result,
-      });
-
-      // Log triage decision
-      await supabase.from('audit_logs').insert({
-        claim_id: claimId,
-        action: `triage_recommendation_${result.recommended_action}`,
-        actor: 'Triage Agent',
-        actor_type: 'ai_triage',
-        details: { 
-          recommended_action: result.recommended_action,
-          severity: result.damage_result.overall_severity,
-          confidence: result.damage_result.overall_confidence,
-        },
-      });
 
       // Use centralized routing service
       const routing = routeClaim({
