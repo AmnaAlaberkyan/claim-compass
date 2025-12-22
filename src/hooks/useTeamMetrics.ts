@@ -43,10 +43,10 @@ export function useTeamMetrics(timeframe: TimeframeFilter = '7d') {
       let eventsQuery = supabase
         .from('audit_logs')
         .select('*')
-        .order('created_at', { ascending: true });
+        .order('timestamp', { ascending: true });
 
       if (cutoff) {
-        eventsQuery = eventsQuery.gte('created_at', cutoff.toISOString());
+        eventsQuery = eventsQuery.gte('timestamp', cutoff.toISOString());
       }
 
       const { data: eventsData } = await eventsQuery;
@@ -87,10 +87,10 @@ export function useTeamMetrics(timeframe: TimeframeFilter = '7d') {
     });
 
     eventsByClaimMap.forEach((events) => {
-      const humanEvents = events.filter(e => e.actor_type === 'human');
+      const humanEvents = events.filter(e => e.actor_type === 'human' || e.actor_type === 'adjuster');
       if (humanEvents.length >= 2) {
-        const firstHuman = new Date(humanEvents[0].created_at).getTime();
-        const lastHuman = new Date(humanEvents[humanEvents.length - 1].created_at).getTime();
+        const firstHuman = new Date(humanEvents[0].timestamp).getTime();
+        const lastHuman = new Date(humanEvents[humanEvents.length - 1].timestamp).getTime();
         const touchTimeMinutes = (lastHuman - firstHuman) / (1000 * 60);
         if (touchTimeMinutes > 0 && touchTimeMinutes < 60) { // Cap at 60 min for outliers
           touchTimes.push(touchTimeMinutes);

@@ -1,10 +1,21 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { AuditEvent, KPIMetrics, TimeframeFilter, getTimeframeCutoff, AUDIT_EVENT_TYPES } from '@/types/audit';
+import { KPIMetrics, TimeframeFilter, getTimeframeCutoff, AUDIT_EVENT_TYPES } from '@/types/audit';
+
+interface AuditEventRaw {
+  id: string;
+  claim_id: string;
+  event_type: string;
+  actor_type: string;
+  actor_id: string | null;
+  payload: Record<string, unknown> | null;
+  timestamp: string;
+  created_at: string;
+}
 
 interface ClaimEvents {
   claimId: string;
-  events: AuditEvent[];
+  events: AuditEventRaw[];
 }
 
 function median(values: number[]): number | null {
@@ -19,7 +30,7 @@ function timeDiffSeconds(start: string, end: string): number {
 }
 
 export function useKPIs(timeframe: TimeframeFilter) {
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEventRaw[]>([]);
   const [claims, setClaims] = useState<{ id: string; status: string; created_at: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -32,10 +43,10 @@ export function useKPIs(timeframe: TimeframeFilter) {
       let eventsQuery = supabase
         .from('audit_logs')
         .select('*')
-        .order('created_at', { ascending: true });
+        .order('timestamp', { ascending: true });
       
       if (cutoff) {
-        eventsQuery = eventsQuery.gte('created_at', cutoff.toISOString());
+        eventsQuery = eventsQuery.gte('timestamp', cutoff.toISOString());
       }
       
       const { data: eventsData, error: eventsError } = await eventsQuery;
@@ -43,13 +54,14 @@ export function useKPIs(timeframe: TimeframeFilter) {
       if (eventsError) {
         console.error('Error fetching audit events:', eventsError);
       } else {
-        const transformed: AuditEvent[] = (eventsData || []).map(e => ({
+        const transformed: AuditEventRaw[] = (eventsData || []).map(e => ({
           id: e.id,
           claim_id: e.claim_id || '',
-          action: e.action as AuditEvent['action'],
-          actor: e.actor,
-          actor_type: e.actor_type as AuditEvent['actor_type'],
-          details: e.details as Record<string, unknown> | null,
+          event_type: e.event_type,
+          actor_type: e.actor_type,
+          actor_id: e.actor_id,
+          payload: e.payload as Record<string, unknown> | null,
+          timestamp: e.timestamp,
           created_at: e.created_at,
         }));
         setAuditEvents(transformed);
@@ -80,7 +92,7 @@ export function useKPIs(timeframe: TimeframeFilter) {
 
   const metrics = useMemo<KPIMetrics>(() => {
     // Group events by claim
-    const eventsByClaimMap = new Map<string, AuditEvent[]>();
+    const eventsByClaimMap = new Map<string, AuditEventRaw[]>();
     auditEvents.forEach(event => {
       if (!event.claim_id) return;
       const existing = eventsByClaimMap.get(event.claim_id) || [];
@@ -90,7 +102,7 @@ export function useKPIs(timeframe: TimeframeFilter) {
     
     const claimEvents: ClaimEvents[] = Array.from(eventsByClaimMap.entries()).map(([claimId, events]) => ({
       claimId,
-      events: events.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+      events: events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
     }));
 
     // Calculate timing metrics
@@ -103,47 +115,47 @@ export function useKPIs(timeframe: TimeframeFilter) {
 
     claimEvents.forEach(({ events }) => {
       const photoUpload = events.find(e => 
-        e.action === 'photo_uploaded'
+        e.event_type === 'photo_uploaded'
       );
       const damageAssessment = events.find(e => 
-        e.action === 'damage_assessment_completed'
+        e.event_type === 'damage_assessment_completed' || e.event_type === 'ai_damage_complete'
       );
       const firstHuman = events.find(e => 
-        e.actor_type === 'human' && 
-        e.action !== 'claim_created'
+        (e.actor_type === 'human' || e.actor_type === 'adjuster') && 
+        e.event_type !== 'claim_created'
       );
       const approval = events.find(e => 
-        ['claim_approved', 'claim_approve'].includes(e.action)
+        ['claim_approved', 'claim_approve', 'adjuster_approve'].includes(e.event_type)
       );
       const hasRetake = events.some(e => 
-        ['retake_requested', 'retake_uploaded'].includes(e.action)
+        ['retake_requested', 'retake_uploaded'].includes(e.event_type)
       );
       const hasQA = events.some(e => 
-        e.action === 'qa_sampled'
+        e.event_type === 'qa_sampled'
       );
       const qaCompleted = events.find(e => 
-        e.action === 'qa_completed'
+        e.event_type === 'qa_completed'
       );
 
       // Upload to assessment
       if (photoUpload && damageAssessment) {
-        uploadToAssessmentTimes.push(timeDiffSeconds(photoUpload.created_at, damageAssessment.created_at));
+        uploadToAssessmentTimes.push(timeDiffSeconds(photoUpload.timestamp, damageAssessment.timestamp));
       }
 
       // Upload to first human
       if (photoUpload && firstHuman) {
-        uploadToFirstHumanTimes.push(timeDiffSeconds(photoUpload.created_at, firstHuman.created_at));
+        uploadToFirstHumanTimes.push(timeDiffSeconds(photoUpload.timestamp, firstHuman.timestamp));
       }
 
       // First human to approval
       if (firstHuman && approval) {
-        firstHumanToApprovalTimes.push(timeDiffSeconds(firstHuman.created_at, approval.created_at));
+        firstHumanToApprovalTimes.push(timeDiffSeconds(firstHuman.timestamp, approval.timestamp));
       }
 
       if (hasRetake) retakeCount++;
       if (hasQA) qaCount++;
       if (qaCompleted) {
-        const passed = (qaCompleted.details as Record<string, unknown>)?.passed;
+        const passed = (qaCompleted.payload as Record<string, unknown>)?.passed;
         if (passed === true) qaPassCount++;
       }
     });
@@ -159,16 +171,16 @@ export function useKPIs(timeframe: TimeframeFilter) {
     claimEvents.forEach(({ claimId, events }) => {
       // Find the last routing decision (reverse search)
       const routingDecision = [...events].reverse().find(e => 
-        e.action === 'routing_decision'
+        e.event_type === 'routing_decision'
       );
       const hasApproval = events.some(e => 
-        ['claim_approved', 'claim_approve'].includes(e.action)
+        ['claim_approved', 'claim_approve', 'adjuster_approve'].includes(e.event_type)
       );
       
       if (routingDecision && !hasApproval) {
-        const details = routingDecision.details as Record<string, unknown>;
-        const status = details?.status as string;
-        const eventTime = new Date(routingDecision.created_at);
+        const payload = routingDecision.payload as Record<string, unknown>;
+        const status = payload?.status as string;
+        const eventTime = new Date(routingDecision.timestamp);
         
         if (eventTime < twentyFourHoursAgo) {
           if (status === 'NEEDS_HUMAN' || status === 'NEEDS_SECOND_REVIEW') {

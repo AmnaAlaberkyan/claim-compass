@@ -87,17 +87,17 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
       .from('audit_logs')
       .select('*')
       .eq('claim_id', claim.id)
-      .order('created_at', { ascending: false });
+      .order('timestamp', { ascending: false });
 
     if (!error && data) {
       const transformedLogs: AuditLog[] = data.map(log => ({
         id: log.id,
         claim_id: log.claim_id || '',
-        action: log.action,
-        actor: log.actor,
+        action: log.event_type,
+        actor: log.actor_id || log.actor_type,
         actor_type: log.actor_type as AuditLog['actor_type'],
-        details: log.details as Record<string, any> | undefined,
-        created_at: log.created_at,
+        details: log.payload as Record<string, any> | undefined,
+        created_at: log.timestamp,
       }));
       setAuditLogs(transformedLogs);
     }
@@ -106,10 +106,10 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
   const logVerificationAction = async (action: string, details: Record<string, any>) => {
     await supabase.from('audit_logs').insert([{
       claim_id: claim.id,
-      action,
-      actor: 'Adjuster',
-      actor_type: 'human',
-      details: JSON.parse(JSON.stringify(details)),
+      event_type: action,
+      actor_type: 'adjuster',
+      actor_id: 'Adjuster',
+      payload: JSON.parse(JSON.stringify(details)),
     }]);
     fetchAuditLogs();
   };
@@ -355,10 +355,10 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
 
       await supabase.from('audit_logs').insert([{
         claim_id: claim.id,
-        action: `claim_${decision}`,
-        actor: 'Adjuster',
-        actor_type: 'human',
-        details: JSON.parse(JSON.stringify({ 
+        event_type: `claim_${decision}`,
+        actor_type: 'adjuster',
+        actor_id: 'Adjuster',
+        payload: JSON.parse(JSON.stringify({ 
           decision, 
           verificationState,
           human_review_requested: claim.human_review_requested,
@@ -380,10 +380,10 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
     try {
       await supabase.from('audit_logs').insert([{
         claim_id: claim.id,
-        action: 'edit_annotations',
-        actor: 'Adjuster',
-        actor_type: 'human',
-        details: JSON.parse(JSON.stringify({
+        event_type: 'edit_annotations',
+        actor_type: 'adjuster',
+        actor_id: 'Adjuster',
+        payload: JSON.parse(JSON.stringify({
           before_json: originalAnnotations,
           after_json: newAnnotations,
         })),
@@ -416,10 +416,10 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
     try {
       await supabase.from('audit_logs').insert([{
         claim_id: claim.id,
-        action: 'annotations_marked_uncertain',
-        actor: 'Adjuster',
-        actor_type: 'human',
-        details: { reason: 'Adjuster marked annotations as uncertain' },
+        event_type: 'annotations_marked_uncertain',
+        actor_type: 'adjuster',
+        actor_id: 'Adjuster',
+        payload: { reason: 'Adjuster marked annotations as uncertain' },
       }]);
 
       const updatedAnnotations: Annotations = {
