@@ -11,9 +11,10 @@ import { DamageOverlay } from './DamageOverlay';
 import { PartsVerificationTable } from './PartsVerificationTable';
 import { RoutingReasonsCard } from './RoutingReasons';
 import { ReplayTimeline } from './ReplayTimeline';
-import { ArrowLeft, Clock, User, Bot, FileText, Shield, UserCheck, AlertTriangle, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Clock, User, Bot, FileText, Shield, UserCheck, AlertTriangle, PlayCircle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 
 interface ClaimDetailProps {
   claim: Claim;
@@ -619,13 +620,49 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
                 <FileText className="w-4 h-4" />
                 Decision Logs
               </h2>
-              <TabsList className="grid grid-cols-2 w-auto">
-                <TabsTrigger value="audit" className="text-xs px-3">Audit Trail</TabsTrigger>
-                <TabsTrigger value="replay" className="text-xs px-3 gap-1">
-                  <PlayCircle className="w-3 h-3" />
-                  Replay
-                </TabsTrigger>
-              </TabsList>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const exportData = {
+                      claim_id: claim.policy_number,
+                      exported_at: new Date().toISOString(),
+                      events: auditLogs.map(log => ({
+                        timestamp: log.created_at,
+                        event_type: log.action,
+                        actor_type: log.actor_type,
+                        actor: log.actor,
+                        ...(log.details && {
+                          model_version: (log.details as any).model_version,
+                          confidence: (log.details as any).confidence,
+                          outputs: log.details,
+                        }),
+                      })),
+                    };
+                    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `audit-log-${claim.policy_number}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    toast.success('Audit log exported');
+                  }}
+                  disabled={auditLogs.length === 0}
+                  className="gap-1"
+                >
+                  <Download className="w-3 h-3" />
+                  Export
+                </Button>
+                <TabsList className="grid grid-cols-2 w-auto">
+                  <TabsTrigger value="audit" className="text-xs px-3">Audit Trail</TabsTrigger>
+                  <TabsTrigger value="replay" className="text-xs px-3 gap-1">
+                    <PlayCircle className="w-3 h-3" />
+                    Replay
+                  </TabsTrigger>
+                </TabsList>
+              </div>
             </div>
             
             <TabsContent value="audit">
