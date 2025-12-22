@@ -10,8 +10,7 @@ import { EstimateCard } from './EstimateCard';
 import { DamageOverlay } from './DamageOverlay';
 import { PartsVerificationTable } from './PartsVerificationTable';
 import { RoutingReasonsCard } from './RoutingReasons';
-import { ReplayTimeline } from './ReplayTimeline';
-import { ArrowLeft, Clock, User, Bot, FileText, Shield, UserCheck, AlertTriangle, PlayCircle, Download } from 'lucide-react';
+import { ArrowLeft, Clock, User, Bot, FileText, Shield, UserCheck, AlertTriangle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -612,97 +611,87 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
           </>
         )}
 
-        {/* Decision Logs: Audit Trail & Replay */}
+        {/* Decision Logs: Full Audit Trail */}
         <div className="card-apple p-6">
-          <Tabs defaultValue="audit" className="w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-foreground flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                Decision Logs
-              </h2>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const exportData = {
-                      claim_id: claim.policy_number,
-                      exported_at: new Date().toISOString(),
-                      events: auditLogs.map(log => ({
-                        timestamp: log.created_at,
-                        event_type: log.action,
-                        actor_type: log.actor_type,
-                        actor: log.actor,
-                        ...(log.details && {
-                          model_version: (log.details as any).model_version,
-                          confidence: (log.details as any).confidence,
-                          outputs: log.details,
-                        }),
-                      })),
-                    };
-                    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `audit-log-${claim.policy_number}.json`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    toast.success('Audit log exported');
-                  }}
-                  disabled={auditLogs.length === 0}
-                  className="gap-1"
-                >
-                  <Download className="w-3 h-3" />
-                  Export
-                </Button>
-                <TabsList className="grid grid-cols-2 w-auto">
-                  <TabsTrigger value="audit" className="text-xs px-3">Audit Trail</TabsTrigger>
-                  <TabsTrigger value="replay" className="text-xs px-3 gap-1">
-                    <PlayCircle className="w-3 h-3" />
-                    Replay
-                  </TabsTrigger>
-                </TabsList>
-              </div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-foreground flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Audit Trail
+            </h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const exportData = {
+                  claim_id: claim.policy_number,
+                  exported_at: new Date().toISOString(),
+                  events: auditLogs.map(log => ({
+                    timestamp: log.created_at,
+                    event_type: log.action,
+                    actor_type: log.actor_type,
+                    actor: log.actor,
+                    details: log.details || null,
+                  })),
+                };
+                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `audit-log-${claim.policy_number}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                toast.success('Audit log exported');
+              }}
+              disabled={auditLogs.length === 0}
+              className="gap-1"
+            >
+              <Download className="w-3 h-3" />
+              Export JSON
+            </Button>
+          </div>
+          
+          {auditLogs.length > 0 ? (
+            <div className="space-y-3">
+              {auditLogs.map(log => (
+                <div key={log.id} className="flex items-start gap-3 text-sm border-b border-border pb-3 last:border-0 last:pb-0">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    log.actor_type === 'human' ? 'bg-primary/10' : 'bg-secondary'
+                  }`}>
+                    {log.actor_type === 'human' 
+                      ? <User className="w-4 h-4 text-primary" />
+                      : <Bot className="w-4 h-4 text-muted-foreground" />
+                    }
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-foreground">
+                      <span className="font-medium">{log.actor}</span>
+                      {' '}<span className="text-muted-foreground">→</span>{' '}
+                      <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{log.action}</span>
+                    </p>
+                    <p className="text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <Clock className="w-3 h-3" />
+                      {formatDateTime(log.created_at)}
+                    </p>
+                    {log.details && Object.keys(log.details).length > 0 && (
+                      <details className="mt-2">
+                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                          View details
+                        </summary>
+                        <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-x-auto max-h-32">
+                          {JSON.stringify(log.details, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-            
-            <TabsContent value="audit">
-              {auditLogs.length > 0 ? (
-                <div className="space-y-3">
-                  {auditLogs.map(log => (
-                    <div key={log.id} className="flex items-start gap-3 text-sm">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        log.actor_type === 'human' ? 'bg-primary/10' : 'bg-secondary'
-                      }`}>
-                        {log.actor_type === 'human' 
-                          ? <User className="w-4 h-4 text-primary" />
-                          : <Bot className="w-4 h-4 text-muted-foreground" />
-                        }
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-foreground">
-                          <span className="font-medium">{log.actor}</span>
-                          {' '}{log.action.replace(/_/g, ' ')}
-                        </p>
-                        <p className="text-muted-foreground flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {formatDateTime(log.created_at)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-6 text-muted-foreground">
-                  <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>No audit events recorded yet</p>
-                </div>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="replay">
-              <ReplayTimeline logs={auditLogs} />
-            </TabsContent>
-          </Tabs>
+          ) : (
+            <div className="text-center py-6 text-muted-foreground">
+              <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p>No audit events recorded yet</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
