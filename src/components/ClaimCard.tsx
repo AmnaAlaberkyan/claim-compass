@@ -1,4 +1,6 @@
 import { Claim } from '@/types/claims';
+import { RoutingReason, RoutingRecommendation } from '@/types/routing';
+import { RoutingWhyBadge } from './RoutingReasons';
 import { Clock, CheckCircle, AlertTriangle, XCircle, FileSearch, UserCheck } from 'lucide-react';
 
 interface ClaimCardProps {
@@ -111,6 +113,12 @@ export function ClaimCard({ claim, onClick }: ClaimCardProps) {
           <span className="status-badge text-xs bg-secondary text-secondary-foreground">
             Confidence: {claim.confidence_score}%
           </span>
+          {claim.routing_reasons && claim.routing_reasons.length > 0 && (
+            <RoutingWhyBadge 
+              reasons={claim.routing_reasons as RoutingReason[]}
+              recommendation={claim.ai_recommendation?.toUpperCase() as RoutingRecommendation}
+            />
+          )}
         </div>
       )}
     </div>

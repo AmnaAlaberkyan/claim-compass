@@ -4,10 +4,12 @@ import { Claim, AuditLog, DamagedPart } from '@/types/claims';
 import { Estimate } from '@/types/estimates';
 import { Annotations, Detection } from '@/types/annotations';
 import { VerificationState, PartVerification, BoxVerification, ReasonCode } from '@/types/verification';
+import { RoutingReason, RoutingRecommendation } from '@/types/routing';
 import { AssessmentResults } from './AssessmentResults';
 import { EstimateCard } from './EstimateCard';
 import { DamageOverlay } from './DamageOverlay';
 import { PartsVerificationTable } from './PartsVerificationTable';
+import { RoutingReasonsCard } from './RoutingReasons';
 import { ArrowLeft, Clock, User, Bot, FileText, Shield, UserCheck, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -513,6 +515,14 @@ export function ClaimDetail({ claim, onBack, onUpdate }: ClaimDetailProps) {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Routing Reasons Card */}
+        {claim.routing_reasons && claim.routing_reasons.length > 0 && (
+          <RoutingReasonsCard 
+            reasons={claim.routing_reasons as RoutingReason[]}
+            recommendation={claim.ai_recommendation?.toUpperCase() as RoutingRecommendation}
+          />
         )}
 
         {/* Human Verification Workspace */}

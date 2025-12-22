@@ -6,8 +6,12 @@ import { AssessmentResults } from './AssessmentResults';
 import { ClaimFormData, QualityResult, DamageAssessment, IntakePreference } from '@/types/claims';
 import { Estimate } from '@/types/estimates';
 import { Annotations } from '@/types/annotations';
+import { RoutingReason, RoutingRecommendation } from '@/types/routing';
 import { EstimateCard } from './EstimateCard';
 import { DamageOverlay } from './DamageOverlay';
+import { RoutingReasonsCard } from './RoutingReasons';
+import { routeClaim } from '@/lib/routing';
+import { useControls } from '@/hooks/useControls';
 import { ArrowLeft, Check, Bot, UserCheck, HelpCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -33,9 +37,15 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [currentClaim, setCurrentClaim] = useState<ClaimFormData | null>(null);
+  const [routingResult, setRoutingResult] = useState<{
+    reasons: RoutingReason[];
+    recommendation: RoutingRecommendation;
+  } | null>(null);
   // Human review preference state
   const [intakePreference, setIntakePreference] = useState<IntakePreference>('ai_first');
   const [humanReviewReason, setHumanReviewReason] = useState('');
+  // Get routing controls
+  const { controls } = useControls();
 
   const handleFormSubmit = async (data: ClaimFormData) => {
     setIsLoading(true);
@@ -194,29 +204,51 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
         },
       });
 
-      // Determine the routing based on human review request
-      let finalStatus: 'review' | 'escalated';
-      if (humanReviewRequested) {
-        // Always route to review queue when human review is requested
-        finalStatus = 'review';
-        // Log routing decision
-        await supabase.from('audit_logs').insert([{
-          claim_id: claimId,
-          action: 'routed_to_human_due_to_request',
-          actor: 'System',
-          actor_type: 'ai_triage',
-          details: JSON.parse(JSON.stringify({
-            reason: 'claimant_requested_human_review',
-            ai_recommendation: result.recommended_action,
-            intake_preference: intakePreference,
-          })),
-        }]);
-      } else {
-        // Normal AI routing logic
-        finalStatus = result.recommended_action === 'escalate' ? 'escalated' : 'review';
-      }
+      // Use centralized routing service
+      const routing = routeClaim({
+        claim: {
+          id: claimId,
+          human_review_requested: humanReviewRequested,
+          confidence_score: result.damage_result.overall_confidence,
+          severity_score: result.damage_result.overall_severity,
+          cost_high: result.estimate?.grandTotalHigh || result.damage_result.total_cost_high,
+          fraud_indicators: result.damage_result.fraud_indicators,
+          safety_concerns: result.damage_result.safety_concerns,
+          quality_score: result.quality_result.score,
+        },
+        assessment: result.damage_result,
+        estimate: result.estimate,
+        controls,
+      });
 
-      // Update claim with assessment data
+      // Map routing recommendation to claim status
+      const statusMap: Record<string, 'review' | 'escalated' | 'approved'> = {
+        'APPROVE': 'approved',
+        'REVIEW': 'review',
+        'ESCALATE': 'escalated',
+      };
+      const finalStatus = statusMap[routing.recommendation] || 'review';
+
+      // Log routing decision with full details
+      await supabase.from('audit_logs').insert([{
+        claim_id: claimId,
+        action: 'routing_decision',
+        actor: 'System',
+        actor_type: 'ai_triage',
+        details: JSON.parse(JSON.stringify({
+          recommendation: routing.recommendation,
+          status: routing.status,
+          reasons: routing.reasons,
+          rulesSnapshot: routing.rulesSnapshot,
+        })),
+      }]);
+
+      setRoutingResult({
+        reasons: routing.reasons,
+        recommendation: routing.recommendation,
+      });
+
+      // Update claim with assessment data and routing info
       await supabase.from('claims').update({
         status: finalStatus,
         quality_score: result.quality_result.score,
@@ -231,6 +263,8 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
         safety_concerns: result.damage_result.safety_concerns,
         fraud_indicators: result.damage_result.fraud_indicators,
         photo_url: `data:image/jpeg;base64,${base64}`,
+        routing_reasons: JSON.parse(JSON.stringify(routing.reasons)),
+        routing_snapshot: JSON.parse(JSON.stringify(routing.rulesSnapshot)),
       }).eq('id', claimId);
 
       setDamageAssessment(result.damage_result);
@@ -439,6 +473,14 @@ export function NewClaimWizard({ onBack, onComplete }: NewClaimWizardProps) {
 
         {step === 'results' && damageAssessment && (
           <div className="animate-fade-in space-y-6">
+            {/* Routing Reasons Card */}
+            {routingResult && routingResult.reasons.length > 0 && (
+              <RoutingReasonsCard 
+                reasons={routingResult.reasons}
+                recommendation={routingResult.recommendation}
+              />
+            )}
+
             {/* Human Review Requested Banner */}
             {intakePreference === 'human_requested' && (
               <div className="card-apple p-4 border-l-4 border-l-warning bg-warning/5">
