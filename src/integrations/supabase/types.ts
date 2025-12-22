@@ -16,31 +16,67 @@ export type Database = {
     Tables: {
       audit_logs: {
         Row: {
-          action: string
-          actor: string
+          actor_id: string | null
           actor_type: string
           claim_id: string | null
           created_at: string
-          details: Json | null
+          decision: Json | null
+          event_hash: string | null
+          event_type: string
           id: string
+          inputs_ref: Json | null
+          metrics: Json | null
+          model_name: string | null
+          model_provider: string | null
+          model_version: string | null
+          payload: Json
+          prev_event_hash: string | null
+          request_id: string | null
+          session_id: string | null
+          snapshots: Json | null
+          timestamp: string
         }
         Insert: {
-          action: string
-          actor: string
+          actor_id?: string | null
           actor_type: string
           claim_id?: string | null
           created_at?: string
-          details?: Json | null
+          decision?: Json | null
+          event_hash?: string | null
+          event_type: string
           id?: string
+          inputs_ref?: Json | null
+          metrics?: Json | null
+          model_name?: string | null
+          model_provider?: string | null
+          model_version?: string | null
+          payload?: Json
+          prev_event_hash?: string | null
+          request_id?: string | null
+          session_id?: string | null
+          snapshots?: Json | null
+          timestamp?: string
         }
         Update: {
-          action?: string
-          actor?: string
+          actor_id?: string | null
           actor_type?: string
           claim_id?: string | null
           created_at?: string
-          details?: Json | null
+          decision?: Json | null
+          event_hash?: string | null
+          event_type?: string
           id?: string
+          inputs_ref?: Json | null
+          metrics?: Json | null
+          model_name?: string | null
+          model_provider?: string | null
+          model_version?: string | null
+          payload?: Json
+          prev_event_hash?: string | null
+          request_id?: string | null
+          session_id?: string | null
+          snapshots?: Json | null
+          timestamp?: string
         }
         Relationships: [
           {
