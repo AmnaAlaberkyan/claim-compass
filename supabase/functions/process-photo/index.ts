@@ -366,7 +366,7 @@ REJECTION CRITERIA (be strict):
 - Obstructions blocking the view
 - Low resolution making details unclear
 
-A photo must score at least 70 to be acceptable. Be strict - bad photos lead to inaccurate damage assessments.`
+A photo must score at least 60 to be acceptable. Be strict - bad photos lead to inaccurate damage assessments.`
         },
         {
           role: "user",
