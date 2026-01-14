@@ -356,17 +356,23 @@ async function runQualityAgent(imageBase64: string, apiKey: string): Promise<any
       messages: [
         {
           role: "system",
-          content: `You are a strict photo quality assessment agent for insurance claims. Your job is to ensure photos are suitable for damage assessment.
+          content: `You are a photo quality assessment agent for insurance claims. Your job is to ensure photos are suitable for damage assessment.
 
-REJECTION CRITERIA (be strict):
-- Blurry or out of focus images
-- Too dark or overexposed
-- Poor angle (not showing damage clearly)
-- Too far away or too close
-- Obstructions blocking the view
-- Low resolution making details unclear
+REJECTION CRITERIA (only reject for genuine quality issues):
+- Very blurry or completely out of focus images
+- Extremely dark or severely overexposed
+- Angle that completely hides the damage
+- So far away that damage details are invisible
+- Obstructions that are NOT part of the damage (people, unrelated objects blocking view)
+- Very low resolution making any details unclear
 
-A photo must score at least 60 to be acceptable. Be strict - bad photos lead to inaccurate damage assessments.`
+IMPORTANT: Do NOT penalize for:
+- Detached vehicle parts (bumpers, panels) that are part of the damage - these are evidence, not obstructions
+- Open doors if the damage is still visible
+- Normal shadows in outdoor photos
+- Reasonable angles that show the damage even if not perfect
+
+A photo must score at least 50 to be acceptable. Be practical - real accident photos aren't studio quality.`
         },
         {
           role: "user",
@@ -579,8 +585,8 @@ serve(async (req) => {
       issues: qualityResult.issues,
     });
 
-    // Override acceptable based on score threshold (60 minimum)
-    const QUALITY_THRESHOLD = 60;
+    // Override acceptable based on score threshold (50 minimum)
+    const QUALITY_THRESHOLD = 50;
     const isAcceptable = qualityResult.score >= QUALITY_THRESHOLD;
     
     if (!isAcceptable) {
