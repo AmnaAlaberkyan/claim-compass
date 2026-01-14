@@ -579,8 +579,12 @@ serve(async (req) => {
       issues: qualityResult.issues,
     });
 
-    if (!qualityResult.acceptable) {
-      console.log("Photo quality failed, requesting retake");
+    // Override acceptable based on score threshold (60 minimum)
+    const QUALITY_THRESHOLD = 60;
+    const isAcceptable = qualityResult.score >= QUALITY_THRESHOLD;
+    
+    if (!isAcceptable) {
+      console.log(`Photo quality failed (score ${qualityResult.score} < ${QUALITY_THRESHOLD}), requesting retake`);
       
       // Log retake request
       await logAuditEvent(supabase, claim_id, 'retake_requested', 'Quality Agent', 'ai_quality', {
